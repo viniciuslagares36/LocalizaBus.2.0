@@ -43,11 +43,17 @@ const getGpsUpdateMinutes = (route) => {
 };
 
 const getLiveBadgeText = (route) => {
+  if (route?.etaToNearestStopMinutes != null) {
+    return `Passa em ${route.etaToNearestStopMinutes} min`;
+  }
+
   const minutes = getGpsUpdateMinutes(route);
 
-  return 'GPS • 1 min';
-  return `GPS • ${minutes} min`;
-  return 'Ao vivo';
+  if (minutes != null) {
+    return `GPS há ${minutes} min`;
+  }
+
+  return 'GPS ativo';
 };
 
 const LiveGpsBadge = memo(({ route }) => {
@@ -64,7 +70,7 @@ const LiveGpsBadge = memo(({ route }) => {
         boxShadow: '0 6px 16px rgba(220, 38, 38, 0.28)',
         minWidth: 118,
       }}
-      title="Tempo desde a última atualização do GPS"
+      title="Tempo estimado para o ônibus passar na parada próxima"
     >
       <span
         className="rounded-full"
@@ -398,17 +404,39 @@ const RouteResultRefatorado = ({ routes, origin, destination, loading, userLocat
       .filter(route => route.realTimeGPS?.lat && route.realTimeGPS?.lon)
       .slice(0, 10)
       .map(route => ({
-        lat: route.realTimeGPS.lat,
-        lon: route.realTimeGPS.lon,
-        icon: '🚌',
-        popup: `Linha ${route.line} • Veículo ${route.realTimeGPS.numero || ''} • ${Math.round(route.realTimeGPS.speed || 0)} km/h`,
+        lat: Number(route.realTimeGPS.lat),
+        lon: Number(route.realTimeGPS.lon),
+        type: 'bus',
+        line: route.line,
+        bearing: route.realTimeGPS.bearing ?? 0,
+        popup: `Linha ${route.line} • Veículo ${route.realTimeGPS.numero || 'ao vivo'} • ${Math.round(route.realTimeGPS.speed || 0)} km/h`,
       }))
   ), [processedRoutes]);
 
+  const stopMarkers = useMemo(() => (
+    processedRoutes
+      .filter(route => route.nearestStopLat && route.nearestStopLon)
+      .map(route => ({
+        lat: Number(route.nearestStopLat),
+        lon: Number(route.nearestStopLon),
+        type: 'stop',
+        popup: `Parada próxima: ${route.nearestStopName || route.fromStop || 'Parada de ônibus'}`,
+      }))
+      .filter((marker, index, arr) => {
+        const key = `${marker.lat.toFixed(6)}_${marker.lon.toFixed(6)}`;
+        return arr.findIndex(m => `${m.lat.toFixed(6)}_${m.lon.toFixed(6)}` === key) === index;
+      })
+      .slice(0, 12)
+  ), [processedRoutes]);
+
+  const mapMarkers = useMemo(() => (
+    [...stopMarkers, ...liveMarkers]
+  ), [stopMarkers, liveMarkers]);
+
   const liveCenter = useMemo(() => {
-    const first = liveMarkers[0];
+    const first = liveMarkers[0] || stopMarkers[0];
     return first ? [first.lon, first.lat] : null;
-  }, [liveMarkers]);
+  }, [liveMarkers, stopMarkers]);
 
   const handleWalkOpen = useCallback(route => setWalkRoute(route), []);
   const handleClose = useCallback(() => setWalkRoute(null), []);
@@ -492,7 +520,7 @@ const RouteResultRefatorado = ({ routes, origin, destination, loading, userLocat
           <div className="rounded-2xl overflow-hidden border border-cyan-400/20">
             <TomTomMap
               center={liveCenter}
-              markers={liveMarkers}
+              markers={mapMarkers}
               isDark={isDark}
             />
           </div>
