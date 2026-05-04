@@ -7,18 +7,14 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import RouteResultRefatorado from './comp/RouteResultRefatorado';
-import {
-  getTransitlandStopsNearby,
-  getTransitlandTransitPlan,
-  getTransitlandWalkingPlan,
-  normalizeTransitlandItineraryMode,
-} from './services/transitland';
-import { findLocalDfPlaces } from './services/semobStops';
+import { normalizeTransitlandItineraryMode } from './services/transitland';
+import { findLocalDfPlaces, getAllSemobStops } from './services/semobStops';
+import { fetchDftransVehicles } from './services/dftransGps';
 
 // ─── API CONFIG ────────────────────────────────
 const TOMTOM_API_KEY = 'kVt12B5jgJTHfcvXLLDSPgcX6bz4f7R1';
-// Transitland fica em src/services/transitland.js.
-// TomTom permanece apenas para mapa, busca e geocoding.
+// TomTom permanece para mapa, busca, geocoding e caminhada.
+// DFTrans/DF no Ponto agora é a fonte principal de ônibus ao vivo.
 
 
 // Normaliza códigos para comparar linhas de transporte (ex: "Linha 143.2", "143.2", "0.143")
@@ -104,11 +100,16 @@ const useRouteSearch = () => {
   const intervalRef = useRef(null);
   const abortControllerRef = useRef(null);
 
-  const getRealtimeVehicles = useCallback(async () => {
-    // A Transitland Routing API Beta não expõe VehiclePositions/GTFS-RT no roteamento.
-    // Mantemos a estrutura pronta para receber GPS real depois sem quebrar a UI.
-    setRealtimeVehicles([]);
-    return [];
+  const getRealtimeVehicles = useCallback(async (signal) => {
+    try {
+      const vehicles = await fetchDftransVehicles({ signal });
+      setRealtimeVehicles(vehicles);
+      return vehicles;
+    } catch (error) {
+      console.warn('[DFTrans GPS] Não foi possível carregar veículos ao vivo:', error?.message || error);
+      setRealtimeVehicles([]);
+      return [];
+    }
   }, []);
 
   const geocodeAddress = async (address, signal) => {
@@ -166,26 +167,61 @@ const useRouteSearch = () => {
     throw new Error('Endereço não encontrado');
   };
 
-  const getTransitlandRoute = async (origin, destination, signal, mode = 'bus') => {
+  const getTomTomWalkingPlan = async (origin, destination, signal) => {
+    try {
+      const response = await axios.get(
+        `https://api.tomtom.com/routing/1/calculateRoute/${origin.lat},${origin.lon}:${destination.lat},${destination.lon}/json`,
+        {
+          params: {
+            key: TOMTOM_API_KEY,
+            travelMode: 'pedestrian',
+            routeType: 'fastest',
+            instructionsType: 'text',
+            language: 'pt-BR',
+          },
+          signal,
+        }
+      );
+
+      const route = response.data?.routes?.[0];
+      if (!route) return [];
+
+      const points = (route.legs || [])
+        .flatMap((leg) => leg.points || [])
+        .map((point) => [point.longitude, point.latitude]);
+
+      return [{
+        duration: route.summary?.travelTimeInSeconds || 0,
+        legs: [{
+          mode: 'WALK',
+          duration: route.summary?.travelTimeInSeconds || 0,
+          distance: route.summary?.lengthInMeters || 0,
+          from: { name: 'Origem' },
+          to: { name: 'Destino' },
+          legGeometry: points.length ? { points, length: points.length } : null,
+        }],
+        routePoints: points,
+        source: 'TomTom Routing',
+      }];
+    } catch (error) {
+      console.warn('[TomTom walking plan]', error?.message || error);
+      return [];
+    }
+  };
+
+  const getTransportPlan = async (origin, destination, signal, mode = 'bus') => {
+    // Para ônibus no DF, a Transitland não está roteando Brasília no plano atual.
+    // Usamos o GPS real do DFTrans para mostrar veículos ao vivo próximos da origem.
+    if (mode === 'bus') return [];
+
+    // Para metrô, mantemos fallback visual por estações/paradas até integrar fonte oficial do Metrô-DF.
+    if (mode === 'metro') return [];
+
     if (mode === 'walk') {
-      return getTransitlandWalkingPlan(origin, destination, { signal });
+      return getTomTomWalkingPlan(origin, destination, signal);
     }
 
-    const itineraries = await getTransitlandTransitPlan(origin, destination, { signal, maxItineraries: 5 });
-
-    // Filtra o que for possível para ônibus ou metrô. Se a API não retornar o modo exato,
-    // deixa passar para manter o MVP apresentável.
-    if (mode === 'bus') {
-      const busOnly = itineraries.filter(it => (it.legs || []).some(l => normalizeTransitlandItineraryMode(l.mode) === 'BUS'));
-      return busOnly.length ? busOnly : itineraries;
-    }
-
-    if (mode === 'metro') {
-      const metroOnly = itineraries.filter(it => (it.legs || []).some(l => normalizeTransitlandItineraryMode(l.mode) === 'METRO'));
-      return metroOnly.length ? metroOnly : itineraries;
-    }
-
-    return itineraries;
+    return [];
   };
 
   const calcDist = (p1, p2) => {
@@ -194,12 +230,25 @@ const useRouteSearch = () => {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   };
 
-  const getNearbyStops = async (coords, signal) => {
-    const stops = await getTransitlandStopsNearby(coords, { radius: 1000, limit: 8, signal });
-    return stops.map(s => ({
-      ...s,
-      distanceKm: s.distanceKm || (s.lat && s.lon ? calcDist(coords, { lat: s.lat, lon: s.lon }) : 0),
-    })).slice(0, 8);
+  const getNearbyStops = async (coords) => {
+    try {
+      const stops = await getAllSemobStops();
+      return stops
+        .filter((s) => s?.position?.lat && s?.position?.lon)
+        .map((s) => ({
+          stopId: s.stopId,
+          stopName: s.name,
+          lat: s.position.lat,
+          lon: s.position.lon,
+          source: s.source || 'Mobilibus/SEMOB',
+          distanceKm: calcDist(coords, { lat: s.position.lat, lon: s.position.lon }),
+        }))
+        .sort((a, b) => a.distanceKm - b.distanceKm)
+        .slice(0, 8);
+    } catch (error) {
+      console.warn('[SEMOB stops nearby]', error?.message || error);
+      return [];
+    }
   };
 
   const combineRoutes = (itineraries, _stops, origin, destination, mode) => {
@@ -266,6 +315,58 @@ const useRouteSearch = () => {
     return out.slice(0, 5);
   };
 
+  const buildLiveBusRoutes = (vehicles, originCoords, destinationCoords, originAddress, destinationAddress) => {
+    const withLine = (vehicles || [])
+      .filter((vehicle) => vehicle.valid && vehicle.line && vehicle.lat && vehicle.lon)
+      .map((vehicle) => {
+        const distanceToOriginKm = calcDist(originCoords, { lat: vehicle.lat, lon: vehicle.lon });
+        const distanceToDestinationKm = calcDist(destinationCoords, { lat: vehicle.lat, lon: vehicle.lon });
+        const updatedAgeMinutes = vehicle.horario
+          ? Math.max(0, Math.round((Date.now() - vehicle.horario) / 60000))
+          : 0;
+        return { ...vehicle, distanceToOriginKm, distanceToDestinationKm, updatedAgeMinutes };
+      })
+      .sort((a, b) => a.distanceToOriginKm - b.distanceToOriginKm);
+
+    const candidates = withLine.filter((vehicle) => vehicle.distanceToOriginKm <= 12).slice(0, 6);
+    const selected = candidates.length ? candidates : withLine.slice(0, 6);
+
+    return selected.map((vehicle, index) => {
+      const walkMinutes = Math.max(1, Math.ceil((vehicle.distanceToOriginKm / 4.8) * 60));
+      return {
+        id: `dftrans_live_${vehicle.numero || index}_${vehicle.line}`,
+        line: vehicle.line,
+        routeId: vehicle.line,
+        destination: destinationAddress,
+        origin: originAddress,
+        time: vehicle.updatedAgeMinutes || 1,
+        estimatedTime: null,
+        stops: 0,
+        distance: vehicle.distanceToOriginKm.toFixed(1),
+        walkMinutes,
+        fromStop: `Ônibus ${vehicle.numero || ''} ao vivo — ${vehicle.distanceToOriginKm.toFixed(1)} km da origem`,
+        toStop: destinationAddress,
+        mode: 'BUS',
+        source: 'DFTrans GPS / DF no Ponto',
+        instruction: `Linha ${vehicle.line} detectada ao vivo pela ${vehicle.operadora?.nome || 'operadora'}. Velocidade: ${Math.round(vehicle.speed || 0)} km/h. Confirme o sentido antes de embarcar.`,
+        tripId: null,
+        isLive: true,
+        isGpsOnly: true,
+        lat: vehicle.lat,
+        lon: vehicle.lon,
+        realTimeGPS: {
+          lat: vehicle.lat,
+          lon: vehicle.lon,
+          bearing: vehicle.bearing,
+          speed: vehicle.speed,
+          updatedAt: vehicle.updatedAt,
+          numero: vehicle.numero,
+          operadora: vehicle.operadora?.nome,
+        },
+      };
+    });
+  };
+
   const searchRoute = async (originAddress, destinationAddress, mode) => {
     if (!originAddress || !destinationAddress || isSearchingRef.current) return;
     abortControllerRef.current?.abort();
@@ -278,19 +379,24 @@ const useRouteSearch = () => {
         geocodeAddress(originAddress, signal),
         geocodeAddress(destinationAddress, signal)
       ]);
-      const realtimeData = await getRealtimeVehicles();
+      const realtimeData = await getRealtimeVehicles(signal);
       window.__lastOriginCoords = originCoords;
-      const transitRoute = await getTransitlandRoute(originCoords, destCoords, signal, mode);
-      const nearbyStops = await getNearbyStops(originCoords, signal);
+      const transitRoute = await getTransportPlan(originCoords, destCoords, signal, mode);
+      const nearbyStops = await getNearbyStops(originCoords);
       let combined = combineRoutes(transitRoute, nearbyStops, originAddress, destinationAddress, mode);
 
-      // Fallback apresentável para ônibus/metrô: quando o roteamento beta não cobre Brasília,
-      // mostramos paradas próximas retornadas pela REST API da Transitland.
+      // Fallback principal de ônibus: GPS real do DFTrans/DF no Ponto.
+      if (mode === 'bus' && combined.length === 0) {
+        combined = buildLiveBusRoutes(realtimeData, originCoords, destCoords, originAddress, destinationAddress);
+      }
+
+      // Fallback apresentável para ônibus/metrô: se não houver veículo com linha,
+      // mostramos paradas oficiais próximas da origem.
       if (mode !== 'walk' && combined.length === 0 && nearbyStops.length > 0) {
         combined = nearbyStops.slice(0, 5).map((stop, index) => ({
-          id: `tl_stop_${stop.stopId || index}`,
-          line: mode === 'metro' ? 'Metrô/Estação próxima' : 'Parada próxima',
-          routeId: stop.stopId || 'TRANSITLAND_STOP',
+          id: `semob_stop_${stop.stopId || index}`,
+          line: mode === 'metro' ? 'Estação/parada próxima' : 'Parada próxima',
+          routeId: stop.stopId || 'SEMOB_STOP',
           destination: destinationAddress,
           origin: originAddress,
           time: Math.max(3, Math.ceil((stop.distanceKm || 0.3) * 12)),
@@ -301,11 +407,13 @@ const useRouteSearch = () => {
           fromStop: stop.stopName || 'Parada próxima',
           toStop: destinationAddress,
           mode: mode === 'metro' ? 'METRO' : 'BUS',
-          source: 'Transitland REST',
+          source: 'Mobilibus/SEMOB',
           instruction: `Vá até ${stop.stopName || 'uma parada próxima'} para consultar linhas disponíveis`,
           tripId: null,
           isLive: false,
           isStopFallback: true,
+          lat: stop.lat,
+          lon: stop.lon,
         }));
       }
 
@@ -339,7 +447,7 @@ const useRouteSearch = () => {
           const etaMin = getEtaMinutes(rv.eta);
           return { ...r, time: etaMin ?? r.time, realTimeGPS: { lat: rv.lat, lon: rv.lon, bearing: rv.bearing, speed: rv.speed, eta: rv.eta }, isLive: true };
         }
-        return { ...r, isLive: false };
+        return r.isLive ? r : { ...r, isLive: false };
       }));
     } catch (err) {
       if (!axios.isCancel(err) && err.name !== 'AbortError') setError(err.message || 'Erro ao buscar rotas');
@@ -358,7 +466,7 @@ const useRouteSearch = () => {
             const etaMin = getEtaMinutes(rv.eta);
             return { ...r, time: etaMin ?? r.time, realTimeGPS: { lat: rv.lat, lon: rv.lon, bearing: rv.bearing, speed: rv.speed, eta: rv.eta }, isLive: true };
           }
-          return { ...r, isLive: false };
+          return r.isLive ? r : { ...r, isLive: false };
         }));
       }
     };
@@ -679,7 +787,7 @@ function App() {
           <motion.div initial={{ opacity: 0, y: 32 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, ...spring }}>
             <div className="inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-xl px-4 py-2 mb-6 border border-white/20">
               <Circle className="h-1.5 w-1.5 fill-green-400 text-green-400 animate-pulse" />
-              <span className="text-[11px] md:text-xs font-medium text-white/90 tracking-wide">Transitland — rotas previstas e mapa em tempo real</span>
+              <span className="text-[11px] md:text-xs font-medium text-white/90 tracking-wide">DFTrans GPS — ônibus ao vivo no DF</span>
             </div>
             <h1 className="text-4xl sm:text-5xl md:text-[5.5rem] font-bold text-white mb-4 leading-[1.04] tracking-[-0.03em]">
               Mobilidade em<br className="hidden sm:block" /> Brasília
@@ -725,7 +833,7 @@ function App() {
               <p className="text-[10px] font-semibold text-[var(--text-tertiary)] uppercase tracking-widest mb-3">Tipo de transporte</p>
               <div className="grid grid-cols-3 gap-2 md:gap-3">
                 {[
-                  { name: 'Ônibus', type: 'bus', icon: Bus, desc: 'Transitland' },
+                  { name: 'Ônibus', type: 'bus', icon: Bus, desc: 'DFTrans GPS' },
                   { name: 'Metrô', type: 'metro', icon: Train, desc: 'Metrô-DF' },
                   { name: 'Caminhada', type: 'walk', icon: Footprints, desc: 'Trajeto a pé' },
                 ].map((m) => (
@@ -770,7 +878,7 @@ function App() {
       </div>
 
       <footer className="pb-8 text-center text-[10px] text-[var(--text-tertiary)]">
-        Dados de transporte: <a href="https://www.transit.land/" target="_blank" rel="noreferrer" className="underline hover:text-[var(--accent)]">Transitland</a>
+        Dados de transporte: DFTrans/SEMOB • <a href="https://www.transit.land/" target="_blank" rel="noreferrer" className="underline hover:text-[var(--accent)]">Transitland</a>
         {' '}• Mapas e busca: TomTom
       </footer>
     </div>

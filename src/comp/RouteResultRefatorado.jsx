@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Bus, Train, Clock, MapPin, Footprints, ArrowRight, ExternalLink } from 'lucide-react';
 import BadgeTempo from './BadgeTempo';
 import WalkingMapModal from './WalkingMapModal';
+import TomTomMap from './TomTomMap';
 import { calcularDistancia, calcularTempoCaminhada, identificarBacia } from '../config/busConfig';
 
 // ─── Constantes fora do componente (sem recriação a cada render) ─────────────
@@ -173,7 +174,12 @@ const RouteCard = memo(({ route, idx, onWalkOpen }) => {
             {route.isWalk ? (
               <p className="text-[10px] text-gray-400 mt-1 truncate">{route.instruction}</p>
             ) : route.fromStop ? (
-              <p className="text-[10px] text-gray-400 mt-1 truncate">Embarque: {route.fromStop}</p>
+              <>
+                <p className="text-[10px] text-gray-400 mt-1 truncate">Embarque: {route.fromStop}</p>
+                {route.instruction && (
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{route.instruction}</p>
+                )}
+              </>
             ) : null}
           </div>
         </div>
@@ -301,6 +307,21 @@ const RouteResultRefatorado = ({ routes, origin, destination, loading, userLocat
 
   const hasLive = useMemo(() => processedRoutes.some(r => r.isLive), [processedRoutes]);
 
+  const liveMarkers = useMemo(() => processedRoutes
+    .filter((route) => route.realTimeGPS?.lat && route.realTimeGPS?.lon)
+    .slice(0, 10)
+    .map((route) => ({
+      lat: route.realTimeGPS.lat,
+      lon: route.realTimeGPS.lon,
+      icon: '🚌',
+      popup: `Linha ${route.line} • Veículo ${route.realTimeGPS.numero || ''} • ${Math.round(route.realTimeGPS.speed || 0)} km/h`,
+    })), [processedRoutes]);
+
+  const liveCenter = useMemo(() => {
+    const first = liveMarkers[0];
+    return first ? [first.lon, first.lat] : null;
+  }, [liveMarkers]);
+
   // useCallback garante referência estável para os RouteCard memoizados
   const handleWalkOpen = useCallback(route => setWalkRoute(route), []);
   const handleClose    = useCallback(() => setWalkRoute(null), []);
@@ -357,6 +378,16 @@ const RouteResultRefatorado = ({ routes, origin, destination, loading, userLocat
             {hasLive ? '🚀 GPS REAL — Veículos ao vivo' : 'Dados de horários — SEMOB/DFTrans'}
           </span>
         </div>
+
+        {hasLive && liveCenter && (
+          <div className="rounded-2xl overflow-hidden border border-cyan-400/20">
+            <TomTomMap
+              center={liveCenter}
+              markers={liveMarkers}
+              isDark={isDark}
+            />
+          </div>
+        )}
 
         {/* Cards */}
         <div className="space-y-2.5">
