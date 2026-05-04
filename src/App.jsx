@@ -9,7 +9,10 @@ import axios from 'axios';
 import RouteResultRefatorado from './comp/RouteResultRefatorado';
 import { normalizeTransitlandItineraryMode } from './services/transitland';
 import { findLocalDfPlaces, getAllSemobStops } from './services/semobStops';
-import { fetchDftransVehicles } from './services/dftransGps';
+import {
+  fetchDftransVehicles,
+  getLiveVehiclesByLine,
+} from './services/dftransGps';
 
 // ─── API CONFIG ────────────────────────────────
 const TOMTOM_API_KEY = 'kVt12B5jgJTHfcvXLLDSPgcX6bz4f7R1';
@@ -33,8 +36,25 @@ const sameLine = (a, b) => {
 
 const getEtaMinutes = (eta) => {
   if (!eta) return null;
+
   const minutes = Math.round((new Date(eta).getTime() - Date.now()) / 60000);
+
   return Number.isFinite(minutes) ? Math.max(minutes, 0) : null;
+};
+
+const isBusLineSearch = (text) => {
+  const value = String(text || '').trim();
+  return /^\d{1,3}(\.\d{1,2})?$/.test(value);
+};
+
+const getVehicleOperatorName = (vehicle) => {
+  if (!vehicle?.operadora) return 'operadora';
+  if (typeof vehicle.operadora === 'string') return vehicle.operadora;
+  return vehicle.operadora?.nome || 'operadora';
+};
+
+const getVehicleLine = (vehicle) => {
+  return String(vehicle?.linha || vehicle?.line || '').trim();
 };
 
 // ─── XSS PREVENTION ────────────────────────────
@@ -317,54 +337,183 @@ const useRouteSearch = () => {
 
   const buildLiveBusRoutes = (vehicles, originCoords, destinationCoords, originAddress, destinationAddress) => {
     const withLine = (vehicles || [])
-      .filter((vehicle) => vehicle.valid && vehicle.line && vehicle.lat && vehicle.lon)
+      .filter((vehicle) => vehicle?.valid !== false && vehicle?.line && vehicle?.lat && vehicle?.lon)
       .map((vehicle) => {
-        const distanceToOriginKm = calcDist(originCoords, { lat: vehicle.lat, lon: vehicle.lon });
-        const distanceToDestinationKm = calcDist(destinationCoords, { lat: vehicle.lat, lon: vehicle.lon });
-        const updatedAgeMinutes = vehicle.horario
-          ? Math.max(0, Math.round((Date.now() - vehicle.horario) / 60000))
-          : 0;
-        return { ...vehicle, distanceToOriginKm, distanceToDestinationKm, updatedAgeMinutes };
+        const distanceToOriginKm = calcDist(originCoords, {
+          lat: Number(vehicle.lat),
+          lon: Number(vehicle.lon),
+        });
+
+        const distanceToDestinationKm = calcDist(destinationCoords, {
+          lat: Number(vehicle.lat),
+          lon: Number(vehicle.lon),
+        });
+
+        const timestamp = vehicle?.horario || vehicle?.updatedAt || null;
+        const updatedAgeMinutes = timestamp
+          ? Math.max(1, Math.round((Date.now() - Number(timestamp)) / 60000))
+          : 1;
+
+        return {
+          ...vehicle,
+          distanceToOriginKm,
+          distanceToDestinationKm,
+          updatedAgeMinutes,
+        };
       })
       .sort((a, b) => a.distanceToOriginKm - b.distanceToOriginKm);
 
-    const candidates = withLine.filter((vehicle) => vehicle.distanceToOriginKm <= 12).slice(0, 6);
+    const candidates = withLine
+      .filter((vehicle) => vehicle.distanceToOriginKm <= 12)
+      .slice(0, 6);
+
     const selected = candidates.length ? candidates : withLine.slice(0, 6);
 
     return selected.map((vehicle, index) => {
       const walkMinutes = Math.max(1, Math.ceil((vehicle.distanceToOriginKm / 4.8) * 60));
+      const operatorName = getVehicleOperatorName(vehicle);
+      const timestamp = vehicle?.horario || vehicle?.updatedAt || null;
+
       return {
         id: `dftrans_live_${vehicle.numero || index}_${vehicle.line}`,
         line: vehicle.line,
         routeId: vehicle.line,
+
         destination: destinationAddress,
         origin: originAddress,
+
         time: vehicle.updatedAgeMinutes || 1,
         estimatedTime: null,
         stops: 0,
         distance: vehicle.distanceToOriginKm.toFixed(1),
         walkMinutes,
+
         fromStop: `Ônibus ${vehicle.numero || ''} ao vivo — ${vehicle.distanceToOriginKm.toFixed(1)} km da origem`,
         toStop: destinationAddress,
+
         mode: 'BUS',
         source: 'DFTrans GPS / DF no Ponto',
-        instruction: `Linha ${vehicle.line} detectada ao vivo pela ${vehicle.operadora?.nome || 'operadora'}. Velocidade: ${Math.round(vehicle.speed || 0)} km/h. Confirme o sentido antes de embarcar.`,
+        instruction: `Linha ${vehicle.line} detectada ao vivo pela ${operatorName}. Sentido: ${vehicle.sentido || 'não informado'}. Velocidade: ${Math.round(vehicle.speed || vehicle.velocidade || 0)} km/h. Confirme o sentido antes de embarcar.`,
+
         tripId: null,
         isLive: true,
         isGpsOnly: true,
-        lat: vehicle.lat,
-        lon: vehicle.lon,
+
+        lat: Number(vehicle.lat),
+        lon: Number(vehicle.lon),
+
         realTimeGPS: {
-          lat: vehicle.lat,
-          lon: vehicle.lon,
-          bearing: vehicle.bearing,
-          speed: vehicle.speed,
-          updatedAt: vehicle.updatedAt,
+          lat: Number(vehicle.lat),
+          lon: Number(vehicle.lon),
+          bearing: vehicle.bearing ?? vehicle.direcao ?? 0,
+          speed: vehicle.speed ?? vehicle.velocidade ?? 0,
+          horario: timestamp,
+          updatedAt: timestamp,
           numero: vehicle.numero,
-          operadora: vehicle.operadora?.nome,
+          line: vehicle.line,
+          sentido: vehicle.sentido || null,
+          operadora: operatorName,
         },
       };
     });
+  };
+
+  const buildLiveBusLineRoutes = (vehicles, linha, originAddress, destinationAddress) => {
+    return (vehicles || [])
+      .filter((vehicle) => {
+        const line = getVehicleLine(vehicle);
+        return vehicle?.valid !== false && line && vehicle?.lat && vehicle?.lon;
+      })
+      .map((vehicle, index) => {
+        const line = getVehicleLine(vehicle);
+        const operatorName = getVehicleOperatorName(vehicle);
+        const timestamp = vehicle?.horario || vehicle?.updatedAt || null;
+
+        const updatedAgeMinutes = timestamp
+          ? Math.max(1, Math.round((Date.now() - Number(timestamp)) / 60000))
+          : 1;
+
+        return {
+          id: `dftrans_line_${vehicle.numero || index}_${line}_${index}`,
+          line,
+          routeId: line,
+
+          destination: destinationAddress,
+          origin: originAddress,
+
+          time: updatedAgeMinutes,
+          estimatedTime: null,
+          stops: 0,
+          distance: null,
+          walkMinutes: 0,
+
+          fromStop: `Ônibus ${vehicle.numero || 'ao vivo'}`,
+          toStop: destinationAddress,
+
+          mode: 'BUS',
+          source: 'DFTrans GPS / Cloudflare',
+          instruction: `Linha ${line} detectada ao vivo pela ${operatorName}. Sentido: ${vehicle.sentido || 'não informado'}. Velocidade: ${Math.round(vehicle.speed || vehicle.velocidade || 0)} km/h.`,
+
+          tripId: null,
+          isLive: true,
+          isGpsOnly: true,
+
+          lat: Number(vehicle.lat),
+          lon: Number(vehicle.lon),
+
+          realTimeGPS: {
+            lat: Number(vehicle.lat),
+            lon: Number(vehicle.lon),
+            bearing: vehicle.bearing ?? vehicle.direcao ?? 0,
+            speed: vehicle.speed ?? vehicle.velocidade ?? 0,
+            horario: timestamp,
+            updatedAt: timestamp,
+            numero: vehicle.numero,
+            line,
+            sentido: vehicle.sentido || null,
+            operadora: operatorName,
+          },
+        };
+      });
+  };
+
+  const searchBusLine = async (linha, originAddress, destinationAddress) => {
+    if (!linha || isSearchingRef.current) return;
+
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
+
+    isSearchingRef.current = true;
+    setLoading(true);
+    setError(null);
+
+    try {
+      const vehicles = await getLiveVehiclesByLine(linha);
+
+      if (!vehicles?.length) {
+        setRoutes([]);
+        setRealtimeVehicles([]);
+        setError(`Nenhum ônibus ao vivo encontrado para a linha ${linha}.`);
+        return;
+      }
+
+      const liveRoutes = buildLiveBusLineRoutes(
+        vehicles,
+        linha,
+        originAddress || linha,
+        destinationAddress || 'ônibus ao vivo'
+      );
+
+      setRealtimeVehicles(vehicles);
+      setRoutes(liveRoutes);
+    } catch (error) {
+      console.error('[DFTrans GPS] Erro ao buscar linha ao vivo:', error);
+      setRoutes([]);
+      setError('Não foi possível buscar ônibus ao vivo agora.');
+    } finally {
+      setLoading(false);
+      isSearchingRef.current = false;
+    }
   };
 
   const searchRoute = async (originAddress, destinationAddress, mode) => {
@@ -445,7 +594,7 @@ const useRouteSearch = () => {
         const rv = realtimeData.find(v => sameLine(v.line, r.line) || sameLine(v.routeId, r.routeId));
         if (rv) {
           const etaMin = getEtaMinutes(rv.eta);
-          return { ...r, time: etaMin ?? r.time, realTimeGPS: { lat: rv.lat, lon: rv.lon, bearing: rv.bearing, speed: rv.speed, eta: rv.eta }, isLive: true };
+          return { ...r, time: etaMin ?? r.time, realTimeGPS: { lat: rv.lat, lon: rv.lon, bearing: rv.bearing, speed: rv.speed, eta: rv.eta, horario: rv.horario || rv.updatedAt, updatedAt: rv.updatedAt || rv.horario, numero: rv.numero, line: rv.line, sentido: rv.sentido || null, operadora: getVehicleOperatorName(rv) }, isLive: true };
         }
         return r.isLive ? r : { ...r, isLive: false };
       }));
@@ -464,7 +613,7 @@ const useRouteSearch = () => {
           const rv = nv.find(v => sameLine(v.line, r.line) || sameLine(v.routeId, r.routeId));
           if (rv) {
             const etaMin = getEtaMinutes(rv.eta);
-            return { ...r, time: etaMin ?? r.time, realTimeGPS: { lat: rv.lat, lon: rv.lon, bearing: rv.bearing, speed: rv.speed, eta: rv.eta }, isLive: true };
+            return { ...r, time: etaMin ?? r.time, realTimeGPS: { lat: rv.lat, lon: rv.lon, bearing: rv.bearing, speed: rv.speed, eta: rv.eta, horario: rv.horario || rv.updatedAt, updatedAt: rv.updatedAt || rv.horario, numero: rv.numero, line: rv.line, sentido: rv.sentido || null, operadora: getVehicleOperatorName(rv) }, isLive: true };
           }
           return r.isLive ? r : { ...r, isLive: false };
         }));
@@ -475,7 +624,14 @@ const useRouteSearch = () => {
     return () => { clearInterval(intervalRef.current); abortControllerRef.current?.abort(); };
   }, [getRealtimeVehicles]);
 
-  return { routes, loading, error, searchRoute, realtimeVehicles };
+return {
+  routes,
+  loading,
+  error,
+  searchRoute,
+  searchBusLine,
+  realtimeVehicles,
+};
 };
 
 // ─── LOCATION INPUT ──────────────────────────────
@@ -707,7 +863,13 @@ function App() {
   const [locationLoading, setLocationLoading] = useState(false);
   const [dark, setDark] = useState(() => { try { return localStorage.getItem('lb-theme') === 'dark'; } catch { return false; } });
   const [userLocationCoords, setUserLocationCoords] = useState(null);
-  const { routes, loading, error, searchRoute } = useRouteSearch();
+  const {
+  routes,
+  loading,
+  error,
+  searchRoute,
+  searchBusLine,
+} = useRouteSearch();
   const searchRef = useRef(null);
 
   useEffect(() => {
@@ -729,6 +891,8 @@ function App() {
         return next;
       });
     }, 5000);
+
+
     return () => clearInterval(id);
   }, []);
 
@@ -749,13 +913,28 @@ function App() {
     );
   };
 
-  const handleSearch = async () => {
-    const safeO = sanitizeInput(origin);
-    const safeD = sanitizeInput(destination);
-    if (!safeO || !safeD) return;
-    setHasSearched(true);
-    await searchRoute(safeO, safeD, selectedMode);
-  };
+const handleSearch = async () => {
+  const safeO = sanitizeInput(origin);
+  const safeD = sanitizeInput(destination);
+
+  if (!safeO || !safeD) return;
+
+  setHasSearched(true);
+
+  if (selectedMode === 'bus') {
+    if (isBusLineSearch(safeO)) {
+      await searchBusLine(safeO, safeO, safeD);
+      return;
+    }
+
+    if (isBusLineSearch(safeD)) {
+      await searchBusLine(safeD, safeO, safeD);
+      return;
+    }
+  }
+
+  await searchRoute(safeO, safeD, selectedMode);
+};
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] transition-colors duration-500 font-apple">
