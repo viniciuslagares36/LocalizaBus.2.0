@@ -5,25 +5,23 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { TOMTOM_CONFIG } from '../config/busConfig';
 
-// ─── SDK singleton loader (evita carregar o script múltiplas vezes) ─────────
-let _sdkPromise = null;
+// ─── SDK singleton GLOBAL (compartilhado com WalkingMapModal — sem conflito) ──
+// window.__ttSdkPromise garante que o script é carregado UMA só vez na página
 const loadSDK = () => {
-  if (_sdkPromise) return _sdkPromise;
-  _sdkPromise = new Promise((res, rej) => {
+  if (window.__ttSdkPromise) return window.__ttSdkPromise;
+  window.__ttSdkPromise = new Promise((res, rej) => {
     if (window.tt) { res(window.tt); return; }
-    // CSS
     const css = document.createElement('link');
     css.rel  = 'stylesheet';
     css.href = 'https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/6.25.0/maps/maps.css';
     document.head.appendChild(css);
-    // JS
     const js  = document.createElement('script');
     js.src    = 'https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/6.25.0/maps/maps-web.min.js';
     js.onload = () => res(window.tt);
     js.onerror= () => rej(new Error('Falha ao carregar TomTom SDK'));
     document.head.appendChild(js);
   });
-  return _sdkPromise;
+  return window.__ttSdkPromise;
 };
 
 // ─── Estilos disponíveis ─────────────────────────────────────────────────────
