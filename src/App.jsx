@@ -1,4 +1,3 @@
-import { findLocalDfPlaces } from './services/semobStops';
 import React, { useState, useEffect, useRef, useCallback, Component } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -8,14 +7,20 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import RouteResultRefatorado from './comp/RouteResultRefatorado';
+import {
+  getTransitlandStopsNearby,
+  getTransitlandTransitPlan,
+  getTransitlandWalkingPlan,
+  normalizeTransitlandItineraryMode,
+} from './services/transitland';
 
 // ─── API CONFIG ────────────────────────────────
 const TOMTOM_API_KEY = 'kVt12B5jgJTHfcvXLLDSPgcX6bz4f7R1';
-const SEMOB_API_BASE = 'https://otp.mobilibus.com/FY7J-lwk85QGbn/otp/routers/default';
-const API_URL = 'https://teste-6eye.onrender.com/api';
+// Transitland fica em src/services/transitland.js.
+// TomTom permanece apenas para mapa, busca e geocoding.
 
 
-// Normaliza códigos para comparar SEMOB x GPS (ex: "Linha 143.2", "143.2", "0.143")
+// Normaliza códigos para comparar linhas de transporte (ex: "Linha 143.2", "143.2", "0.143")
 const normalizeLineCode = (value) => String(value || '')
   .toLowerCase()
   .replace('linha', '')
@@ -99,14 +104,10 @@ const useRouteSearch = () => {
   const abortControllerRef = useRef(null);
 
   const getRealtimeVehicles = useCallback(async () => {
-    try {
-      const response = await axios.get(`${API_URL}/realtime-vehicles`, { timeout: 65000 });
-      if (response.data.success && response.data.vehicles) {
-        setRealtimeVehicles(response.data.vehicles);
-        return response.data.vehicles;
-      }
-      return [];
-    } catch { return []; }
+    // A Transitland Routing API Beta não expõe VehiclePositions/GTFS-RT no roteamento.
+    // Mantemos a estrutura pronta para receber GPS real depois sem quebrar a UI.
+    setRealtimeVehicles([]);
+    return [];
   }, []);
 
   const geocodeAddress = async (address, signal) => {
@@ -122,31 +123,40 @@ const useRouteSearch = () => {
     throw new Error('Endereço não encontrado');
   };
 
-  const getSEMOBRoute = async (origin, destination, signal, mode = 'bus') => {
-    try {
-      const response = await axios.get(`${SEMOB_API_BASE}/plan`, {
-        params: { fromPlace: `${origin.lat},${origin.lon}`, toPlace: `${destination.lat},${destination.lon}`,
-          mode: mode === 'walk' ? 'WALK' : 'TRANSIT,WALK', locale: 'pt_BR', numItineraries: 3, walkSpeed: 1.4, wheelchair: false, showIntermediateStops: true },
-        timeout: 60000, signal
-      });
-      return response.data?.plan?.itineraries || [];
-    } catch { return []; }
+  const getTransitlandRoute = async (origin, destination, signal, mode = 'bus') => {
+    if (mode === 'walk') {
+      return getTransitlandWalkingPlan(origin, destination, { signal });
+    }
+
+    const itineraries = await getTransitlandTransitPlan(origin, destination, { signal, maxItineraries: 5 });
+
+    // Filtra o que for possível para ônibus ou metrô. Se a API não retornar o modo exato,
+    // deixa passar para manter o MVP apresentável.
+    if (mode === 'bus') {
+      const busOnly = itineraries.filter(it => (it.legs || []).some(l => normalizeTransitlandItineraryMode(l.mode) === 'BUS'));
+      return busOnly.length ? busOnly : itineraries;
+    }
+
+    if (mode === 'metro') {
+      const metroOnly = itineraries.filter(it => (it.legs || []).some(l => normalizeTransitlandItineraryMode(l.mode) === 'METRO'));
+      return metroOnly.length ? metroOnly : itineraries;
+    }
+
+    return itineraries;
   };
 
   const calcDist = (p1, p2) => {
     const R = 6371, dLat = (p2.lat - p1.lat) * Math.PI / 180, dLon = (p2.lon - p1.lon) * Math.PI / 180;
-    const a = Math.sin(dLat/2)**2 + Math.cos(p1.lat*Math.PI/180)*Math.cos(p2.lat*Math.PI/180)*Math.sin(dLon/2)**2;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(p1.lat * Math.PI / 180) * Math.cos(p2.lat * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   };
 
-  const getNearbyBuses = async (coords, signal) => {
-    try {
-      const r = await axios.get(`${SEMOB_API_BASE}/index/stops`, { params: { lat: coords.lat, lon: coords.lon, radius: 1000 }, timeout: 10000, signal });
-      if (Array.isArray(r.data)) return r.data.filter(s => calcDist(coords, s) < 1).slice(0, 5)
-        .map(s => ({ stopId: s.id, stopName: s.name, lat: s.lat, lon: s.lon, distanceKm: calcDist(coords, s) }));
-    } catch {}
-    return [{ stopId: '1', stopName: 'Parada Eixo Monumental', distanceKm: 0.3 },
-      { stopId: '2', stopName: 'Parada W3 Sul', distanceKm: 0.5 }];
+  const getNearbyStops = async (coords, signal) => {
+    const stops = await getTransitlandStopsNearby(coords, { radius: 1000, limit: 8, signal });
+    return stops.map(s => ({
+      ...s,
+      distanceKm: s.distanceKm || (s.lat && s.lon ? calcDist(coords, { lat: s.lat, lon: s.lon }) : 0),
+    })).slice(0, 8);
   };
 
   const combineRoutes = (itineraries, _stops, origin, destination, mode) => {
@@ -183,23 +193,30 @@ const useRouteSearch = () => {
       }
 
       // Modo ônibus/metrô: pegar legs de transporte
-      const transit = legs.filter(l => l.mode && l.mode !== 'WALK');
-      const walkTime = legs.filter(l => l.mode === 'WALK').reduce((s, l) => s + (l.duration || 0), 0) / 60;
+      const transit = legs.filter(l => l.mode && normalizeTransitlandItineraryMode(l.mode) !== 'WALK');
+      const walkTime = legs.filter(l => normalizeTransitlandItineraryMode(l.mode) === 'WALK').reduce((s, l) => s + (l.duration || 0), 0) / 60;
       transit.forEach((leg, li) => {
-        const routeId = leg.route || leg.routeId || leg.trip?.routeId || 'N/A';
-        const shortName = leg.routeShortName || leg.trip?.routeShortName || routeId;
+        const routeId = leg.route || leg.routeId || leg.routeId || leg.trip?.routeId || leg.routeLongName || 'N/A';
+        const shortName = leg.routeShortName || leg.route || leg.trip?.routeShortName || routeId;
+        const normalizedMode = normalizeTransitlandItineraryMode(leg.mode);
         out.push({
-          id: `${routeId}_${idx}_${li}`, line: shortName, routeId,
-          destination, origin,
-          time: Math.ceil(leg.duration / 60 || totalDur), estimatedTime: totalDur,
-          stops: leg.intermediateStops?.length || Math.floor(Math.random() * 15) + 3,
-          distance: (leg.distance / 1000).toFixed(1),
+          id: `${routeId}_${idx}_${li}`,
+          line: shortName,
+          routeId,
+          destination,
+          origin,
+          time: Math.ceil((leg.duration || it.duration || 0) / 60),
+          estimatedTime: Math.ceil(totalDur),
+          stops: leg.intermediateStops?.length || leg.to?.stopSequence || 0,
+          distance: ((leg.distance || 0) / 1000).toFixed(1),
           walkMinutes: Math.ceil(walkTime),
           fromStop: leg.from?.name || 'Ponto de embarque',
           toStop: leg.to?.name || 'Ponto de desembarque',
-          mode: leg.mode,
-          instruction: `Pegue a linha ${shortName} no ponto ${leg.from?.name || 'próximo'}`,
-          tripId: leg.trip?.id
+          mode: normalizedMode,
+          source: 'Transitland',
+          instruction: `Pegue ${normalizedMode === 'METRO' ? 'o metrô' : 'a linha'} ${shortName} no ponto ${leg.from?.name || 'próximo'}`,
+          tripId: leg.tripId || leg.trip?.id,
+          isLive: false,
         });
       });
     });
@@ -220,9 +237,34 @@ const useRouteSearch = () => {
       ]);
       const realtimeData = await getRealtimeVehicles();
       window.__lastOriginCoords = originCoords;
-      const transitRoute = await getSEMOBRoute(originCoords, destCoords, signal, mode);
-      const nearbyBuses = await getNearbyBuses(originCoords, signal);
-      let combined = combineRoutes(transitRoute, nearbyBuses, originAddress, destinationAddress, mode);
+      const transitRoute = await getTransitlandRoute(originCoords, destCoords, signal, mode);
+      const nearbyStops = await getNearbyStops(originCoords, signal);
+      let combined = combineRoutes(transitRoute, nearbyStops, originAddress, destinationAddress, mode);
+
+      // Fallback apresentável para ônibus/metrô: quando o roteamento beta não cobre Brasília,
+      // mostramos paradas próximas retornadas pela REST API da Transitland.
+      if (mode !== 'walk' && combined.length === 0 && nearbyStops.length > 0) {
+        combined = nearbyStops.slice(0, 5).map((stop, index) => ({
+          id: `tl_stop_${stop.stopId || index}`,
+          line: mode === 'metro' ? 'Metrô/Estação próxima' : 'Parada próxima',
+          routeId: stop.stopId || 'TRANSITLAND_STOP',
+          destination: destinationAddress,
+          origin: originAddress,
+          time: Math.max(3, Math.ceil((stop.distanceKm || 0.3) * 12)),
+          estimatedTime: null,
+          stops: 0,
+          distance: Number(stop.distanceKm || 0).toFixed(1),
+          walkMinutes: Math.max(3, Math.ceil((stop.distanceKm || 0.3) * 12)),
+          fromStop: stop.stopName || 'Parada próxima',
+          toStop: destinationAddress,
+          mode: mode === 'metro' ? 'METRO' : 'BUS',
+          source: 'Transitland REST',
+          instruction: `Vá até ${stop.stopName || 'uma parada próxima'} para consultar linhas disponíveis`,
+          tripId: null,
+          isLive: false,
+          isStopFallback: true,
+        }));
+      }
 
       // Fallback para caminhada: se a API não retornou nada, calcular localmente
       if (mode === 'walk' && combined.length === 0) {
@@ -294,49 +336,49 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, onDetectLocat
   const debRef = useRef(null);
   const abortRef = useRef(null);
 
-// Adicionar na função fetchSuggestions do LocationInput em App.jsx
-const fetchSuggestions = async (q) => {
-  const safe = sanitizeInput(q);
-  if (!safe || safe.length < 3) { setSuggestions([]); return; }
-  
-  abortRef.current?.abort();
-  abortRef.current = new AbortController();
-  setSugLoading(true);
-  
-  try {
-    const r = await axios.get(
-      `https://api.tomtom.com/search/2/search/${encodeURIComponent(safe)}.json`,
-      { 
-       params: {
-  key: TOMTOM_API_KEY,
-  idxSet: 'POI,PAD,STR',
-  countrySet: 'BR',
-  lat: -15.7934,
-  lon: -47.8823,
-  radius: 50000,
-  limit: 8,
-  language: 'pt-BR'
-},
-        signal: abortRef.current.signal 
+  // Adicionar na função fetchSuggestions do LocationInput em App.jsx
+  const fetchSuggestions = async (q) => {
+    const safe = sanitizeInput(q);
+    if (!safe || safe.length < 3) { setSuggestions([]); return; }
+
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+    setSugLoading(true);
+
+    try {
+      const r = await axios.get(
+        `https://api.tomtom.com/search/2/search/${encodeURIComponent(safe)}.json`,
+        {
+          params: {
+            key: TOMTOM_API_KEY,
+            idxSet: 'POI,PAD,STR',
+            countrySet: 'BR',
+            lat: -15.7934,
+            lon: -47.8823,
+            radius: 50000,
+            limit: 8,
+            language: 'pt-BR'
+          },
+          signal: abortRef.current.signal
+        }
+      );
+
+      if (r.data.results) {
+        setSuggestions(r.data.results);
+        setShowSuggestions(true);
       }
-    );
-    
-    if (r.data.results) { 
-      setSuggestions(r.data.results); 
-      setShowSuggestions(true); 
-    }
-  } catch (e) { 
-    if (!axios.isCancel(e)) {
-      console.error('Erro na busca TomTom:', e);
-      // Tratar erro de localização negada
-      if (e.response?.status === 403) {
-        setError('Serviço de localização temporariamente indisponível');
+    } catch (e) {
+      if (!axios.isCancel(e)) {
+        console.error('Erro na busca TomTom:', e);
+        // Tratar erro de localização negada
+        if (e.response?.status === 403) {
+          setError('Serviço de localização temporariamente indisponível');
+        }
       }
+    } finally {
+      setSugLoading(false);
     }
-  } finally { 
-    setSugLoading(false); 
-  }
-};
+  };
 
   const handleChange = (e) => {
     const safe = sanitizeInput(e.target.value);
@@ -397,7 +439,7 @@ const fetchSuggestions = async (q) => {
 const RouteResult = ({ routes, origin, destination, loading }) => {
   if (loading) return (
     <div className="mt-6 space-y-3">
-      {[1,2,3].map(i => <div key={i} className="h-24 rounded-2xl animate-pulse bg-[var(--skeleton-bg)]" />)}
+      {[1, 2, 3].map(i => <div key={i} className="h-24 rounded-2xl animate-pulse bg-[var(--skeleton-bg)]" />)}
     </div>
   );
   if (!routes?.length) return null;
@@ -405,7 +447,7 @@ const RouteResult = ({ routes, origin, destination, loading }) => {
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={spring} className="mt-7 space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold text-[var(--text-tertiary)] uppercase tracking-widest mb-1">Rotas SEMOB / DFTrans</p>
+          <p className="text-[10px] font-semibold text-[var(--text-tertiary)] uppercase tracking-widest mb-1">Rotas Transitland</p>
           <div className="flex items-center gap-1.5 flex-wrap">
             <p className="text-sm font-semibold text-[var(--text-primary)] truncate max-w-[140px]">{origin}</p>
             <ArrowRight className="h-3 w-3 text-[var(--text-tertiary)] flex-shrink-0" />
@@ -417,7 +459,7 @@ const RouteResult = ({ routes, origin, destination, loading }) => {
       <div className="flex items-center gap-2">
         <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
         <span className="text-[10px] font-semibold text-green-600 dark:text-green-400">
-          {routes.some(r => r.isLive) ? '🚀 GPS REAL — Veículos ao vivo' : 'Dados de horários — SEMOB/DFTrans'}
+          {routes.some(r => r.isLive) ? '🚀 GPS real disponível' : 'Dados previstos — Transitland'}
         </span>
       </div>
       <div className="space-y-2.5">
@@ -426,10 +468,9 @@ const RouteResult = ({ routes, origin, destination, loading }) => {
             initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }}
             transition={{ delay: idx * 0.06, ...spring }}
             whileHover={{ y: -2 }} whileTap={{ scale: 0.99 }}
-            className={`rounded-2xl border p-4 cursor-pointer transition-all duration-200 ${
-              route.isLive ? 'border-green-300/60 bg-green-50/40 dark:border-green-800/50 dark:bg-green-900/10'
-                : 'border-[var(--border)] bg-[var(--card-inner)]'
-            }`}>
+            className={`rounded-2xl border p-4 cursor-pointer transition-all duration-200 ${route.isLive ? 'border-green-300/60 bg-green-50/40 dark:border-green-800/50 dark:bg-green-900/10'
+              : 'border-[var(--border)] bg-[var(--card-inner)]'
+              }`}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 <div className={`rounded-full p-2 flex-shrink-0 ${route.isLive ? 'bg-green-100 dark:bg-green-900/40' : 'bg-[var(--accent)]/10'}`}>
@@ -496,7 +537,7 @@ function App() {
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
-    try { localStorage.setItem('lb-theme', dark ? 'dark' : 'light'); } catch {}
+    try { localStorage.setItem('lb-theme', dark ? 'dark' : 'light'); } catch { }
   }, [dark]);
 
   useEffect(() => {
@@ -527,7 +568,7 @@ function App() {
           const r = await axios.get(`https://api.tomtom.com/search/2/reverseGeocode/${pos.coords.latitude},${pos.coords.longitude}.json`,
             { params: { key: TOMTOM_API_KEY, returnSpeedLimit: false, language: 'pt-BR' } });
           if (r.data.addresses?.[0]) setter(r.data.addresses[0].address.freeformAddress);
-        } catch {} finally { setLocationLoading(false); }
+        } catch { } finally { setLocationLoading(false); }
       },
       () => setLocationLoading(false)
     );
@@ -571,7 +612,7 @@ function App() {
           <motion.div initial={{ opacity: 0, y: 32 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, ...spring }}>
             <div className="inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-xl px-4 py-2 mb-6 border border-white/20">
               <Circle className="h-1.5 w-1.5 fill-green-400 text-green-400 animate-pulse" />
-              <span className="text-[11px] md:text-xs font-medium text-white/90 tracking-wide">GPS REAL — Veículos monitorados ao vivo</span>
+              <span className="text-[11px] md:text-xs font-medium text-white/90 tracking-wide">Transitland — rotas previstas e mapa em tempo real</span>
             </div>
             <h1 className="text-4xl sm:text-5xl md:text-[5.5rem] font-bold text-white mb-4 leading-[1.04] tracking-[-0.03em]">
               Mobilidade em<br className="hidden sm:block" /> Brasília
@@ -602,7 +643,7 @@ function App() {
           className="bg-[var(--card-bg)] backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-2xl border border-[var(--border)] overflow-hidden">
           <div className="px-6 md:px-8 py-4 md:py-5 border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent)]/5 to-transparent">
             <h2 className="text-base md:text-lg font-semibold text-[var(--text-primary)] tracking-tight">Planeje sua rota</h2>
-            <p className="text-xs md:text-sm text-[var(--text-secondary)] mt-0.5">Busque por ônibus ao vivo</p>
+            <p className="text-xs md:text-sm text-[var(--text-secondary)] mt-0.5">Busque por ônibus, metrô e caminhada</p>
           </div>
 
           <div className="p-6 md:p-8">
@@ -617,7 +658,7 @@ function App() {
               <p className="text-[10px] font-semibold text-[var(--text-tertiary)] uppercase tracking-widest mb-3">Tipo de transporte</p>
               <div className="grid grid-cols-3 gap-2 md:gap-3">
                 {[
-                  { name: 'Ônibus', type: 'bus', icon: Bus, desc: 'GPS Real ao vivo' },
+                  { name: 'Ônibus', type: 'bus', icon: Bus, desc: 'Transitland' },
                   { name: 'Metrô', type: 'metro', icon: Train, desc: 'Metrô-DF' },
                   { name: 'Caminhada', type: 'walk', icon: Footprints, desc: 'Trajeto a pé' },
                 ].map((m) => (
@@ -636,11 +677,10 @@ function App() {
 
             <motion.button whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.98 }}
               onClick={handleSearch} disabled={!origin || !destination || loading}
-              className={`mt-6 w-full rounded-xl md:rounded-2xl py-3 md:py-3.5 font-semibold flex items-center justify-center gap-2 text-sm md:text-base tracking-tight transition-all duration-200 ${
-                origin && destination && !loading
-                  ? 'bg-[var(--accent)] text-white hover:opacity-92 shadow-lg shadow-[var(--accent)]/20'
-                  : 'bg-[var(--disabled-bg)] text-[var(--disabled-text)] cursor-not-allowed'}`}>
-              {loading ? <><Loader2 className="h-4 w-4 animate-spin" />Buscando com GPS REAL…</> : 'Buscar rota agora'}
+              className={`mt-6 w-full rounded-xl md:rounded-2xl py-3 md:py-3.5 font-semibold flex items-center justify-center gap-2 text-sm md:text-base tracking-tight transition-all duration-200 ${origin && destination && !loading
+                ? 'bg-[var(--accent)] text-white hover:opacity-92 shadow-lg shadow-[var(--accent)]/20'
+                : 'bg-[var(--disabled-bg)] text-[var(--disabled-text)] cursor-not-allowed'}`}>
+              {loading ? <><Loader2 className="h-4 w-4 animate-spin" />Buscando rota…</> : 'Buscar rota agora'}
             </motion.button>
 
             {(hasSearched || routes.length > 0) && <RouteResultRefatorado routes={routes} origin={origin} destination={destination} loading={loading} userLocation={userLocationCoords} isDark={dark} />}
@@ -661,6 +701,11 @@ function App() {
           </div>
         </motion.div>
       </div>
+
+      <footer className="pb-8 text-center text-[10px] text-[var(--text-tertiary)]">
+        Dados de transporte: <a href="https://www.transit.land/" target="_blank" rel="noreferrer" className="underline hover:text-[var(--accent)]">Transitland</a>
+        {' '}• Mapas e busca: TomTom
+      </footer>
     </div>
   );
 }
