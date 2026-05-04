@@ -13,6 +13,7 @@ import {
   getTransitlandWalkingPlan,
   normalizeTransitlandItineraryMode,
 } from './services/transitland';
+import { findLocalDfPlaces } from './services/semobStops';
 
 // ─── API CONFIG ────────────────────────────────
 const TOMTOM_API_KEY = 'kVt12B5jgJTHfcvXLLDSPgcX6bz4f7R1';
@@ -112,14 +113,56 @@ const useRouteSearch = () => {
 
   const geocodeAddress = async (address, signal) => {
     const safe = sanitizeInput(address);
-    const response = await axios.get(
-      `https://api.tomtom.com/search/2/geocode/${encodeURIComponent(safe)}.json`,
-      { params: { key: TOMTOM_API_KEY, countrySet: 'BR', limit: 1 }, signal }
-    );
-    if (response.data.results?.[0]) {
-      const loc = response.data.results[0].position;
-      return { lat: loc.lat, lon: loc.lon, displayName: response.data.results[0].address.freeformAddress };
+
+    // 1) Primeiro tenta a base oficial/local do DF/SEMOB/Mobilibus. Isso evita o TomTom jogar
+    // Rodoviária/paradas para CEPs ou endereços genéricos.
+    const localMatches = await findLocalDfPlaces(safe);
+    const exactLocal = localMatches.find((place) => {
+      const a = String(place.address || '').toLowerCase();
+      const n = String(place.name || '').toLowerCase();
+      const q = safe.toLowerCase();
+      return a === q || n === q || a.includes(q) || n.includes(q);
+    });
+
+    if (exactLocal?.position) {
+      return {
+        lat: exactLocal.position.lat,
+        lon: exactLocal.position.lon,
+        displayName: exactLocal.address || exactLocal.name,
+        source: exactLocal.source || 'Mobilibus/SEMOB',
+        stopId: exactLocal.stopId,
+      };
     }
+
+    // 2) Depois usa TomTom, com viés forte para Brasília e resultados completos.
+    const response = await axios.get(
+      `https://api.tomtom.com/search/2/search/${encodeURIComponent(safe)}.json`,
+      {
+        params: {
+          key: TOMTOM_API_KEY,
+          countrySet: 'BR',
+          lat: -15.7939,
+          lon: -47.8828,
+          radius: 70000,
+          limit: 5,
+          language: 'pt-BR',
+          idxSet: 'POI,PAD,STR,XSTR,GEO,ADDR',
+        },
+        signal,
+      }
+    );
+
+    const result = response.data.results?.find((item) => item.position?.lat && item.position?.lon);
+    if (result) {
+      const loc = result.position;
+      return {
+        lat: loc.lat,
+        lon: loc.lon,
+        displayName: result.address?.freeformAddress || result.poi?.name || safe,
+        source: 'TomTom',
+      };
+    }
+
     throw new Error('Endereço não encontrado');
   };
 
@@ -346,16 +389,18 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, onDetectLocat
     setSugLoading(true);
 
     try {
+      const localResults = await findLocalDfPlaces(safe, { limit: 12 });
+
       const r = await axios.get(
         `https://api.tomtom.com/search/2/search/${encodeURIComponent(safe)}.json`,
         {
           params: {
             key: TOMTOM_API_KEY,
-            idxSet: 'POI,PAD,STR',
+            idxSet: 'POI,PAD,STR,XSTR,GEO,ADDR',
             countrySet: 'BR',
-            lat: -15.7934,
-            lon: -47.8823,
-            radius: 50000,
+            lat: -15.7939,
+            lon: -47.8828,
+            radius: 70000,
             limit: 8,
             language: 'pt-BR'
           },
@@ -363,16 +408,38 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, onDetectLocat
         }
       );
 
-      if (r.data.results) {
-        setSuggestions(r.data.results);
-        setShowSuggestions(true);
-      }
+      const tomtomResults = (r.data.results || []).map((item) => ({
+        ...item,
+        source: 'TomTom',
+      }));
+
+      const localSuggestions = localResults.map((place) => ({
+        source: place.source || 'SEMOB/DF',
+        poi: { name: place.name },
+        address: {
+          freeformAddress: place.address || place.name,
+          municipality: place.type || 'DF',
+          countrySubdivision: 'Distrito Federal',
+        },
+        position: place.position,
+        stopId: place.stopId,
+      }));
+
+      const merged = [...localSuggestions, ...tomtomResults]
+        .filter((item, index, arr) => {
+          const key = String(item.address?.freeformAddress || item.poi?.name || '').toLowerCase();
+          return key && arr.findIndex((x) => String(x.address?.freeformAddress || x.poi?.name || '').toLowerCase() === key) === index;
+        })
+        .slice(0, 10);
+
+      setSuggestions(merged);
+      setShowSuggestions(merged.length > 0);
     } catch (e) {
       if (!axios.isCancel(e)) {
         console.error('Erro na busca TomTom:', e);
         // Tratar erro de localização negada
         if (e.response?.status === 403) {
-          setError('Serviço de localização temporariamente indisponível');
+          console.warn('Serviço de localização temporariamente indisponível');
         }
       }
     } finally {
@@ -425,7 +492,7 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, onDetectLocat
               <button key={i} onClick={() => { onChange(s.address.freeformAddress); setShowSuggestions(false); setSuggestions([]); }}
                 className="w-full text-left px-4 py-2.5 hover:bg-[var(--accent)]/8 transition-colors border-b border-[var(--border)] last:border-0">
                 <p className="text-sm font-medium text-[var(--text-primary)] truncate">{s.address.freeformAddress}</p>
-                <p className="text-xs text-[var(--text-tertiary)] truncate">{s.address.municipality || s.address.countrySubdivision}</p>
+                <p className="text-xs text-[var(--text-tertiary)] truncate">{s.source ? `${s.source} • ` : ''}{s.address.municipality || s.address.countrySubdivision}</p>
               </button>
             ))}
           </motion.div>
