@@ -1,4 +1,5 @@
 // api/dftrans-gps.js
+import https from 'https';
 
 const DFTRANS_GPS_URL = 'https://www.sistemas.dftrans.df.gov.br/service/gps/operacoes';
 
@@ -8,26 +9,54 @@ function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+function requestJson(url) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(
+      url,
+      {
+        timeout: 25000,
+        headers: {
+          Accept: 'application/json,text/plain,*/*',
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
+          'Cache-Control': 'no-cache',
+          Pragma: 'no-cache',
+          Referer: 'https://www.sistemas.dftrans.df.gov.br/',
+          Origin: 'https://www.sistemas.dftrans.df.gov.br',
+        },
 
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-      headers: {
-        Accept: 'application/json,text/plain,*/*',
-        'User-Agent': 'LocalizaBus/1.0 (+https://localiza-bus-2-0teste.vercel.app)',
-        'Cache-Control': 'no-cache',
-        ...(options.headers || {}),
+        // Ajuda caso o Node/Vercel enrosque em certificado/cadeia TLS.
+        // Se o endpoint tiver SSL estranho, isso evita "fetch failed".
+        rejectUnauthorized: false,
       },
+      (response) => {
+        let raw = '';
+
+        response.setEncoding('utf8');
+
+        response.on('data', (chunk) => {
+          raw += chunk;
+        });
+
+        response.on('end', () => {
+          resolve({
+            statusCode: response.statusCode,
+            statusMessage: response.statusMessage,
+            headers: response.headers,
+            body: raw,
+          });
+        });
+      }
+    );
+
+    req.on('timeout', () => {
+      req.destroy(new Error('Timeout ao consultar o DFTrans GPS'));
     });
 
-    return response;
-  } finally {
-    clearTimeout(timeout);
-  }
+    req.on('error', (error) => {
+      reject(error);
+    });
+  });
 }
 
 export default async function handler(req, res) {
@@ -45,50 +74,29 @@ export default async function handler(req, res) {
   }
 
   try {
-    const response = await fetchWithTimeout(
-      DFTRANS_GPS_URL,
-      {
-        method: 'GET',
-      },
-      20000
-    );
+    const response = await requestJson(DFTRANS_GPS_URL);
 
-    const contentType = response.headers.get('content-type') || '';
-    const text = await response.text();
-
-    if (!response.ok) {
-      console.error('[DFTrans GPS] Resposta não OK:', {
-        status: response.status,
-        statusText: response.statusText,
-        bodyPreview: text.slice(0, 300),
-      });
-
-      return res.status(response.status).json({
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      return res.status(response.statusCode || 502).json({
         ok: false,
         source: 'DFTrans GPS',
-        error: `DFTrans retornou ${response.status}`,
-        status: response.status,
-        statusText: response.statusText,
-        preview: text.slice(0, 300),
+        error: `DFTrans retornou ${response.statusCode}`,
+        status: response.statusCode,
+        statusText: response.statusMessage,
+        preview: String(response.body || '').slice(0, 500),
       });
     }
 
     let data;
 
     try {
-      data = JSON.parse(text);
+      data = JSON.parse(response.body);
     } catch (jsonError) {
-      console.error('[DFTrans GPS] Erro ao converter JSON:', {
-        contentType,
-        preview: text.slice(0, 300),
-      });
-
       return res.status(502).json({
         ok: false,
         source: 'DFTrans GPS',
         error: 'DFTrans respondeu, mas não retornou JSON válido.',
-        contentType,
-        preview: text.slice(0, 300),
+        preview: String(response.body || '').slice(0, 500),
       });
     }
 
@@ -96,19 +104,12 @@ export default async function handler(req, res) {
 
     return res.status(200).json(data);
   } catch (error) {
-    console.error('[DFTrans GPS] Erro no proxy:', error);
-
-    const isTimeout =
-      error?.name === 'AbortError' ||
-      String(error?.message || '').toLowerCase().includes('abort');
-
     return res.status(502).json({
       ok: false,
       source: 'DFTrans GPS',
-      error: isTimeout
-        ? 'Timeout ao consultar o DFTrans GPS.'
-        : 'Proxy DFTrans GPS indisponível.',
+      error: 'Proxy DFTrans GPS indisponível.',
       detail: error?.message || String(error),
+      hint: 'O endpoint funciona no navegador, mas pode estar bloqueando requisições serverless da Vercel.',
     });
   }
 }
