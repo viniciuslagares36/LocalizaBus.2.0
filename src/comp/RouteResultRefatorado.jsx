@@ -45,9 +45,8 @@ const getGpsUpdateMinutes = (route) => {
 const getLiveBadgeText = (route) => {
   const minutes = getGpsUpdateMinutes(route);
 
-  if (minutes === 1) return 'Ao vivo • 1 min';
-  if (minutes) return `Ao vivo • ${minutes} min`;
-
+  return 'GPS • 1 min';
+  return `GPS • ${minutes} min`;
   return 'Ao vivo';
 };
 

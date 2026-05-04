@@ -488,7 +488,11 @@ const useRouteSearch = () => {
     setError(null);
 
     try {
-      const vehicles = await getLiveVehiclesByLine(linha);
+      try {
+  window.__lastLiveLine = linha;
+  window.__lastSearchType = 'line';
+
+  const vehicles = await getLiveVehiclesByLine(linha);
 
       if (!vehicles?.length) {
         setRoutes([]);
@@ -606,19 +610,66 @@ const useRouteSearch = () => {
   };
 
   useEffect(() => {
-    const refresh = async () => {
-      if (window.__lastOriginCoords) {
-        const nv = await getRealtimeVehicles();
-        setRoutes(prev => prev.map(r => {
-          const rv = nv.find(v => sameLine(v.line, r.line) || sameLine(v.routeId, r.routeId));
-          if (rv) {
-            const etaMin = getEtaMinutes(rv.eta);
-            return { ...r, time: etaMin ?? r.time, realTimeGPS: { lat: rv.lat, lon: rv.lon, bearing: rv.bearing, speed: rv.speed, eta: rv.eta, horario: rv.horario || rv.updatedAt, updatedAt: rv.updatedAt || rv.horario, numero: rv.numero, line: rv.line, sentido: rv.sentido || null, operadora: getVehicleOperatorName(rv) }, isLive: true };
-          }
-          return r.isLive ? r : { ...r, isLive: false };
-        }));
+const refresh = async () => {
+  try {
+    // Atualiza busca por linha específica
+    if (window.__lastSearchType === 'line' && window.__lastLiveLine) {
+      const vehicles = await getLiveVehiclesByLine(window.__lastLiveLine);
+
+      if (vehicles?.length) {
+        const liveRoutes = buildLiveBusLineRoutes(
+          vehicles,
+          window.__lastLiveLine,
+          window.__lastLiveLine,
+          'ônibus ao vivo'
+        );
+
+        setRealtimeVehicles(vehicles);
+        setRoutes(liveRoutes);
       }
-    };
+
+      return;
+    }
+
+    // Atualiza busca normal por origem/destino
+    if (window.__lastOriginCoords) {
+      const nv = await getRealtimeVehicles();
+
+      setRoutes(prev => prev.map(r => {
+        const rv = nv.find(v => sameLine(v.line, r.line) || sameLine(v.routeId, r.routeId));
+
+        if (rv) {
+          const etaMin = getEtaMinutes(rv.eta);
+
+          return {
+            ...r,
+            time: etaMin ?? r.time,
+            lat: rv.lat,
+            lon: rv.lon,
+            realTimeGPS: {
+              lat: rv.lat,
+              lon: rv.lon,
+              bearing: rv.bearing,
+              speed: rv.speed,
+              eta: rv.eta,
+              horario: rv.horario,
+              updatedAt: rv.updatedAt || rv.horario,
+              numero: rv.numero,
+              line: rv.line,
+              sentido: rv.sentido || null,
+              operadora: rv.operadora?.nome || rv.operadora || 'operadora',
+            },
+            isLive: true,
+          };
+        }
+
+        return r.isLive ? r : { ...r, isLive: false };
+      }));
+    }
+  } catch (error) {
+    console.warn('[DFTrans GPS] Falha ao atualizar veículos ao vivo:', error?.message || error);
+  }
+};
     clearInterval(intervalRef.current);
     intervalRef.current = setInterval(refresh, 60000);
     return () => { clearInterval(intervalRef.current); abortControllerRef.current?.abort(); };
