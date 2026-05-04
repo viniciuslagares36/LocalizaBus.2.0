@@ -4,8 +4,8 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { TOMTOM_CONFIG } from '../config/busConfig';
-import busMarkerIcon from '../assets/bus-marker.svg';
-import busStopMarkerIcon from '../assets/bus-stop-marker.svg';
+import busMarkerIcon from '../assets/bus-transport-svgrepo-com.svg';
+import busStopMarkerIcon from '../assets/bus-stop-svgrepo-com.svg';
 
 // ─── SDK singleton GLOBAL (compartilhado com WalkingMapModal — sem conflito) ──
 const loadSDK = () => {
