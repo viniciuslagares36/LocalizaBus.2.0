@@ -1,143 +1,158 @@
-// src/components/TomTomMap.jsx
-import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useGeolocation } from '../hooks/useGeolocation';
-import { TOMTOM_CONFIG } from '../config/busConfig';
+// src/hooks/useGeolocation.js
+// Hook de geolocalização com interpolação suave, anti memory-leak e throttle
+import { useState, useEffect, useRef, useCallback } from 'react';
 
-const TomTomMap = ({ center, markers = [], onError }) => {
-  const mapRef = useRef(null);
-  const [mapLoaded, setMapLoaded] = useState(false);
-  const [loadError, setLoadError] = useState(null);
-  const { location, error: geoError } = useGeolocation({
-    enableHighAccuracy: true,
-    smoothTransition: true
-  });
+const SPEED_MS   = 1.33;  // 4.8 km/h em m/s (caminhada média)
+const LERP_ALPHA = 0.18;  // coeficiente de interpolação suave (0 = lento, 1 = instantâneo)
+const THROTTLE_MS = 800;  // mínimo entre updates de estado (evita re-renders excessivos)
 
-  // Memoizar marcadores para evitar re-renders
-  const memoizedMarkers = useMemo(() => markers, [markers]);
+/** Interpola linearmente entre dois valores */
+const lerp = (a, b, t) => a + (b - a) * t;
 
-  useEffect(() => {
-    // Carregar script do TomTom
-    const loadTomTomMap = async () => {
-      try {
-        const script = document.createElement('script');
-        script.src = `https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/6.23.0/maps/maps-web.min.js`;
-        script.onload = () => {
-          if (window.tt && window.tt.map) {
-            initializeMap();
-          }
-        };
-        script.onerror = () => {
-          setLoadError('Erro ao carregar mapa');
-          onError?.('Erro ao carregar mapa');
-        };
-        document.head.appendChild(script);
-      } catch (err) {
-        setLoadError(err.message);
-        onError?.(err.message);
-      }
-    };
-
-    loadTomTomMap();
-  }, []);
-
-  const initializeMap = () => {
-    if (!mapRef.current) return;
-
-    const map = window.tt.map({
-      key: TOMTOM_CONFIG.API_KEY,
-      container: mapRef.current,
-      center: center || [TOMTOM_CONFIG.CENTRO_BRASILIA.lon, TOMTOM_CONFIG.CENTRO_BRASILIA.lat],
-      zoom: 14,
-      style: 'https://api.tomtom.com/style/2/custom/style/main.json', // Estilo clean "main"
-      language: 'pt-BR'
-    });
-
-    // Adicionar controle de navegação
-    map.addControl(new window.tt.NavigationControl(), 'top-left');
-
-    // Adicionar marcadores memoizados
-    memoizedMarkers.forEach(marker => {
-      const el = document.createElement('div');
-      el.className = 'custom-marker';
-      el.innerHTML = marker.icon || '📍';
-      el.style.fontSize = '24px';
-      
-      new window.tt.Marker({ element: el })
-        .setLngLat([marker.lon, marker.lat])
-        .setPopup(new window.tt.Popup().setHTML(marker.popup || ''))
-        .addTo(map);
-    });
-
-    setMapLoaded(true);
-  };
-
-  // Atualizar posição do usuário com transição suave
-  useEffect(() => {
-    if (!mapRef.current || !location) return;
-    
-    const mapContainer = mapRef.current;
-    mapContainer.style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
-    
-    // Atualizar centro do mapa suavemente
-    const currentCenter = mapRef.current._map?.getCenter();
-    if (currentCenter) {
-      const newCenter = {
-        lng: currentCenter.lng + (location.lon - currentCenter.lng) * 0.1,
-        lat: currentCenter.lat + (location.lat - currentCenter.lat) * 0.1
-      };
-      mapRef.current._map?.easeTo({ 
-        center: [newCenter.lng, newCenter.lat],
-        duration: 1000,
-        easing: (t) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
-      });
-    }
-  }, [location]);
-
-  if (loadError) {
-    return (
-      <div className="w-full h-96 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-        <p className="text-sm text-gray-500">{loadError}</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative w-full h-96 rounded-2xl overflow-hidden">
-      <div 
-        ref={mapRef} 
-        className="w-full h-full"
-        style={{ 
-          transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          willChange: 'transform'
-        }}
-      />
-      
-      {/* Indicador de localização do usuário */}
-      <AnimatePresence>
-        {location && (
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            exit={{ scale: 0 }}
-            className="absolute bottom-4 right-4 bg-white dark:bg-gray-800 rounded-full p-2 shadow-lg"
-          >
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse" />
-              <span className="text-xs font-medium">GPS Ativo</span>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      
-      {/* Erro de localização */}
-      {geoError && (
-        <div className="absolute top-4 left-4 bg-red-100 dark:bg-red-900/30 rounded-lg p-3 max-w-xs">
-          <p className="text-xs text-red-700 dark:text-red-400">{geoError}</p>
-        </div>
-      )}
-    </div>
-  );
+/** Haversine em metros */
+const haversineM = (a, b) => {
+  const R = 6371000;
+  const dL = (b.lat - a.lat) * Math.PI / 180;
+  const dO = (b.lon - a.lon) * Math.PI / 180;
+  const x  = Math.sin(dL/2)**2 + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dO/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
 };
 
-export default React.memo(TomTomMap);
+/**
+ * useGeolocation
+ * @param {object} opts
+ * @param {boolean} opts.enableHighAccuracy
+ * @param {boolean} opts.smoothTransition  – ativa interpolação de posição
+ * @param {number}  opts.maxAge
+ * @param {number}  opts.timeout
+ * @returns {{ location, accuracy, bearing, speed, error, supported }}
+ */
+export const useGeolocation = ({
+  enableHighAccuracy = true,
+  smoothTransition   = true,
+  maxAge             = 800,
+  timeout            = 12000,
+} = {}) => {
+  const [location,  setLocation]  = useState(null);
+  const [accuracy,  setAccuracy]  = useState(null);
+  const [bearing,   setBearing]   = useState(0);
+  const [speed,     setSpeed]     = useState(0);
+  const [error,     setError]     = useState(null);
+
+  const watchIdRef     = useRef(null);
+  const lastRawRef     = useRef(null);   // última posição bruta
+  const smoothPosRef   = useRef(null);   // posição interpolada atual
+  const rafRef         = useRef(null);   // requestAnimationFrame id
+  const lastEmitRef    = useRef(0);      // timestamp do último setState (throttle)
+  const mountedRef     = useRef(true);
+
+  const supported = typeof navigator !== 'undefined' && 'geolocation' in navigator;
+
+  // ── Calcula bearing entre dois pontos ──────────────────────────────────────
+  const calcBearing = (prev, next) => {
+    const dLon = (next.lon - prev.lon) * Math.PI / 180;
+    const y = Math.sin(dLon) * Math.cos(next.lat * Math.PI/180);
+    const x = Math.cos(prev.lat*Math.PI/180)*Math.sin(next.lat*Math.PI/180)
+            - Math.sin(prev.lat*Math.PI/180)*Math.cos(next.lat*Math.PI/180)*Math.cos(dLon);
+    return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+  };
+
+  // ── Loop de animação para interpolação suave (RAF) ─────────────────────────
+  const startLerpLoop = useCallback(() => {
+    if (rafRef.current) return; // já rodando
+
+    const tick = () => {
+      if (!mountedRef.current) return;
+      const raw    = lastRawRef.current;
+      const smooth = smoothPosRef.current;
+      if (!raw || !smooth) { rafRef.current = requestAnimationFrame(tick); return; }
+
+      // Interpola lat/lon
+      const newLat = lerp(smooth.lat, raw.lat, LERP_ALPHA);
+      const newLon = lerp(smooth.lon, raw.lon, LERP_ALPHA);
+      smoothPosRef.current = { lat: newLat, lon: newLon };
+
+      // Throttle do setState para max 1 vez a cada THROTTLE_MS ms
+      const now = Date.now();
+      if (now - lastEmitRef.current >= THROTTLE_MS) {
+        lastEmitRef.current = now;
+        setLocation({ lat: newLat, lon: newLon });
+      }
+
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  // ── Callback do watchPosition ──────────────────────────────────────────────
+  const onSuccess = useCallback((pos) => {
+    if (!mountedRef.current) return;
+    const { latitude: lat, longitude: lon, accuracy: acc, speed: spd, heading } = pos.coords;
+    const raw = { lat, lon };
+
+    // Bearing: usa heading da API se disponível, senão calcula
+    if (lastRawRef.current) {
+      const b = (heading != null && !isNaN(heading))
+        ? heading
+        : calcBearing(lastRawRef.current, raw);
+      setBearing(b);
+    }
+
+    setAccuracy(Math.round(acc));
+    setSpeed(spd ?? SPEED_MS);
+    setError(null);
+
+    lastRawRef.current = raw;
+
+    if (smoothTransition) {
+      if (!smoothPosRef.current) smoothPosRef.current = raw; // bootstrap
+      startLerpLoop();
+    } else {
+      // Sem interpolação: emite direto com throttle
+      const now = Date.now();
+      if (now - lastEmitRef.current >= THROTTLE_MS) {
+        lastEmitRef.current = now;
+        setLocation(raw);
+      }
+    }
+  }, [smoothTransition, startLerpLoop]);
+
+  const onError = useCallback((err) => {
+    if (!mountedRef.current) return;
+    const msgs = {
+      1: 'Permissão de localização negada.',
+      2: 'Posição indisponível. Verifique o GPS.',
+      3: 'Tempo esgotado ao obter localização.',
+    };
+    setError(msgs[err.code] || `Erro de GPS (${err.code})`);
+  }, []);
+
+  // ── Inicializa e limpa o watchPosition ────────────────────────────────────
+  useEffect(() => {
+    mountedRef.current = true;
+    if (!supported) { setError('Geolocalização não suportada neste dispositivo.'); return; }
+
+    watchIdRef.current = navigator.geolocation.watchPosition(onSuccess, onError, {
+      enableHighAccuracy,
+      maximumAge: maxAge,
+      timeout,
+    });
+
+    return () => {
+      mountedRef.current = false;
+      // ── ANTI MEMORY LEAK ──────────────────────────────────────────────────
+      if (watchIdRef.current != null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [enableHighAccuracy, maxAge, timeout, onSuccess, onError, supported]);
+
+  return { location, accuracy, bearing, speed, error, supported };
+};
+
+export default useGeolocation;
