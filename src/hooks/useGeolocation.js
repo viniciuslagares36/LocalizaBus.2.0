@@ -2,7 +2,7 @@
 // Hook de geolocalização com interpolação suave, anti memory-leak e throttle
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const SPEED_MS   = 1.33;  // 4.8 km/h em m/s (caminhada média)
+const SPEED_MS = 1.33;  // 4.8 km/h em m/s (caminhada média)
 const LERP_ALPHA = 0.18;  // coeficiente de interpolação suave (0 = lento, 1 = instantâneo)
 const THROTTLE_MS = 800;  // mínimo entre updates de estado (evita re-renders excessivos)
 
@@ -14,8 +14,8 @@ const haversineM = (a, b) => {
   const R = 6371000;
   const dL = (b.lat - a.lat) * Math.PI / 180;
   const dO = (b.lon - a.lon) * Math.PI / 180;
-  const x  = Math.sin(dL/2)**2 + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dO/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
+  const x = Math.sin(dL / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dO / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 };
 
 /**
@@ -29,31 +29,33 @@ const haversineM = (a, b) => {
  */
 export const useGeolocation = ({
   enableHighAccuracy = true,
-  smoothTransition   = true,
-  maxAge             = 800,
-  timeout            = 12000,
+  smoothTransition = true,
+  maxAge = 800,
+  // ✅ FIX: timeout reduzido para 8s; se GPS travar, onError é chamado logo
+  // e o sistema não fica em loop de "Calculando rota..." infinito
+  timeout = 8000,
 } = {}) => {
-  const [location,  setLocation]  = useState(null);
-  const [accuracy,  setAccuracy]  = useState(null);
-  const [bearing,   setBearing]   = useState(0);
-  const [speed,     setSpeed]     = useState(0);
-  const [error,     setError]     = useState(null);
+  const [location, setLocation] = useState(null);
+  const [accuracy, setAccuracy] = useState(null);
+  const [bearing, setBearing] = useState(0);
+  const [speed, setSpeed] = useState(0);
+  const [error, setError] = useState(null);
 
-  const watchIdRef     = useRef(null);
-  const lastRawRef     = useRef(null);   // última posição bruta
-  const smoothPosRef   = useRef(null);   // posição interpolada atual
-  const rafRef         = useRef(null);   // requestAnimationFrame id
-  const lastEmitRef    = useRef(0);      // timestamp do último setState (throttle)
-  const mountedRef     = useRef(true);
+  const watchIdRef = useRef(null);
+  const lastRawRef = useRef(null);   // última posição bruta
+  const smoothPosRef = useRef(null);   // posição interpolada atual
+  const rafRef = useRef(null);   // requestAnimationFrame id
+  const lastEmitRef = useRef(0);      // timestamp do último setState (throttle)
+  const mountedRef = useRef(true);
 
   const supported = typeof navigator !== 'undefined' && 'geolocation' in navigator;
 
   // ── Calcula bearing entre dois pontos ──────────────────────────────────────
   const calcBearing = (prev, next) => {
     const dLon = (next.lon - prev.lon) * Math.PI / 180;
-    const y = Math.sin(dLon) * Math.cos(next.lat * Math.PI/180);
-    const x = Math.cos(prev.lat*Math.PI/180)*Math.sin(next.lat*Math.PI/180)
-            - Math.sin(prev.lat*Math.PI/180)*Math.cos(next.lat*Math.PI/180)*Math.cos(dLon);
+    const y = Math.sin(dLon) * Math.cos(next.lat * Math.PI / 180);
+    const x = Math.cos(prev.lat * Math.PI / 180) * Math.sin(next.lat * Math.PI / 180)
+      - Math.sin(prev.lat * Math.PI / 180) * Math.cos(next.lat * Math.PI / 180) * Math.cos(dLon);
     return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
   };
 
@@ -63,7 +65,7 @@ export const useGeolocation = ({
 
     const tick = () => {
       if (!mountedRef.current) return;
-      const raw    = lastRawRef.current;
+      const raw = lastRawRef.current;
       const smooth = smoothPosRef.current;
       if (!raw || !smooth) { rafRef.current = requestAnimationFrame(tick); return; }
 
