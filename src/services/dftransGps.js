@@ -1,11 +1,5 @@
 // src/services/dftransGps.js
 
-import {
-  getAllLiveVehicles,
-  getLiveVehiclesByLine,
-  findNearbyVehicles,
-} from './services/dftransGps.js';
-
 const DFTRANS_WORKER_URL = import.meta.env.VITE_DFTRANS_WORKER_URL;
 
 const DFTRANS_DIRECT_URL =
@@ -65,43 +59,52 @@ function normalizeVehicle(vehicle, fallbackOperadora = null) {
 
   const operadora = vehicle?.operadora || fallbackOperadora || {};
 
+  const operadoraNome =
+    typeof operadora === 'string'
+      ? operadora
+      : operadora?.nome || '';
+
   return {
     id:
       vehicle?.id ||
-      `${vehicle?.numero || 'sem-numero'}-${vehicle?.linha || 'sem-linha'}-${vehicle?.horario || Date.now()}`,
+      `${vehicle?.numero || 'sem-numero'}-${vehicle?.linha || vehicle?.line || 'sem-linha'}-${vehicle?.horario || Date.now()}`,
 
     numero: vehicle?.numero || '',
-    line: normalizeLine(vehicle?.linha),
-    linha: normalizeLine(vehicle?.linha),
+
+    line: normalizeLine(vehicle?.linha || vehicle?.line),
+    linha: normalizeLine(vehicle?.linha || vehicle?.line),
 
     lat: Number(lat),
     lon: Number(lon),
 
-    horario: vehicle?.horario || null,
-    updatedAt: vehicle?.horario || null,
+    horario: vehicle?.horario || vehicle?.updatedAt || null,
+    updatedAt: vehicle?.updatedAt || vehicle?.horario || null,
 
     speed:
       vehicle?.speed ??
       vehicle?.velocidade?.valor ??
+      vehicle?.velocidade ??
       0,
 
     velocidade:
       vehicle?.velocidade?.valor ??
       vehicle?.speed ??
+      vehicle?.velocidade ??
       0,
 
-    direcao: vehicle?.direcao ?? 0,
-    bearing: vehicle?.direcao ?? 0,
+    direcao: vehicle?.direcao ?? vehicle?.bearing ?? 0,
+    bearing: vehicle?.bearing ?? vehicle?.direcao ?? 0,
 
     sentido: vehicle?.sentido || null,
     valid: vehicle?.valid !== false,
 
     codigoImei: vehicle?.codigoImei || '',
 
-    operadora: operadora?.nome || '',
-    operadoraSigla: operadora?.sigla || '',
-    operadoraId: operadora?.id || null,
-    operadoraRazaoSocial: operadora?.razaoSocial || '',
+    operadora: operadoraNome,
+    operadoraSigla: typeof operadora === 'object' ? operadora?.sigla || '' : '',
+    operadoraId: typeof operadora === 'object' ? operadora?.id || null : null,
+    operadoraRazaoSocial:
+      typeof operadora === 'object' ? operadora?.razaoSocial || '' : '',
   };
 }
 
@@ -200,6 +203,8 @@ export async function getAllLiveVehicles() {
   return normalizeDftransResponse(data);
 }
 
+export async function getLiveVehiclesByLine(line) {
+  const normalizedLine = normalizeLine(line);
 
   if (!normalizedLine) return [];
 
@@ -226,6 +231,10 @@ export async function getAllLiveVehicles() {
   return vehicles.filter((vehicle) => {
     return normalizeLine(vehicle.linha || vehicle.line) === normalizedLine;
   });
+}
+
+export async function fetchDftransVehicles() {
+  return getAllLiveVehicles();
 }
 
 export function getVehicleAgeMinutes(vehicle) {
