@@ -477,49 +477,47 @@ const useRouteSearch = () => {
       });
   };
 
-  const searchBusLine = async (linha, originAddress, destinationAddress) => {
-    if (!linha || isSearchingRef.current) return;
+const searchBusLine = async (linha, originAddress, destinationAddress) => {
+  if (!linha || isSearchingRef.current) return;
 
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = new AbortController();
+  abortControllerRef.current?.abort();
+  abortControllerRef.current = new AbortController();
 
-    isSearchingRef.current = true;
-    setLoading(true);
-    setError(null);
+  isSearchingRef.current = true;
+  setLoading(true);
+  setError(null);
 
-    try {
-      try {
-  window.__lastLiveLine = linha;
-  window.__lastSearchType = 'line';
+  try {
+    window.__lastLiveLine = linha;
+    window.__lastSearchType = 'line';
 
-  const vehicles = await getLiveVehiclesByLine(linha);
+    const vehicles = await getLiveVehiclesByLine(linha);
 
-      if (!vehicles?.length) {
-        setRoutes([]);
-        setRealtimeVehicles([]);
-        setError(`Nenhum ônibus ao vivo encontrado para a linha ${linha}.`);
-        return;
-      }
-
-      const liveRoutes = buildLiveBusLineRoutes(
-        vehicles,
-        linha,
-        originAddress || linha,
-        destinationAddress || 'ônibus ao vivo'
-      );
-
-      setRealtimeVehicles(vehicles);
-      setRoutes(liveRoutes);
-    } catch (error) {
-      console.error('[DFTrans GPS] Erro ao buscar linha ao vivo:', error);
+    if (!vehicles?.length) {
       setRoutes([]);
-      setError('Não foi possível buscar ônibus ao vivo agora.');
-    } finally {
-      setLoading(false);
-      isSearchingRef.current = false;
+      setRealtimeVehicles([]);
+      setError(`Nenhum ônibus ao vivo encontrado para a linha ${linha}.`);
+      return;
     }
-  };
 
+    const liveRoutes = buildLiveBusLineRoutes(
+      vehicles,
+      linha,
+      originAddress || linha,
+      destinationAddress || 'ônibus ao vivo'
+    );
+
+    setRealtimeVehicles(vehicles);
+    setRoutes(liveRoutes);
+  } catch (error) {
+    console.error('[DFTrans GPS] Erro ao buscar linha ao vivo:', error);
+    setRoutes([]);
+    setError('Não foi possível buscar ônibus ao vivo agora.');
+  } finally {
+    setLoading(false);
+    isSearchingRef.current = false;
+  }
+};
   const searchRoute = async (originAddress, destinationAddress, mode) => {
     if (!originAddress || !destinationAddress || isSearchingRef.current) return;
     abortControllerRef.current?.abort();
