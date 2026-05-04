@@ -20,7 +20,7 @@ const TOMTOM_API_KEY = 'kVt12B5jgJTHfcvXLLDSPgcX6bz4f7R1';
 // DFTrans/DF no Ponto agora é a fonte principal de ônibus ao vivo.
 
 
-// Normaliza códigos para comparar linhas de transporte (ex: "Linha 143.2", "143.2", "0.143")
+// Normaliza códigos para comparar linhas de transporte (ex: "Linha 143.2", "143.2", "0.143 e etc")
 const normalizeLineCode = (value) => String(value || '')
   .toLowerCase()
   .replace('linha', '')
