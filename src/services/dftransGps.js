@@ -225,7 +225,7 @@ export async function getLiveVehiclesByLine(line) {
     }
   }
 
-  // Fallback: pega tudo e filtra no navegador
+  // Fallback: pega tudo e filtra no navegado
   const vehicles = await getAllLiveVehicles();
 
   return vehicles.filter((vehicle) => {
