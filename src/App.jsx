@@ -80,6 +80,14 @@ const carouselImages = [
   { src: 'https://wallpaperaccess.com/full/2073416.jpg', title: 'Brasília à noite' },
 ];
 
+// Pré-carrega próxima imagem sem bloquear a main thread
+const preloadImage = (src) => {
+  const img = new Image();
+  img.decoding = 'async';
+  img.fetchPriority = 'low';
+  img.src = src;
+};
+
 // ─── ROUTE SEARCH HOOK ───────────────────────────
 const useRouteSearch = () => {
   const [routes, setRoutes] = useState([]);
@@ -492,7 +500,19 @@ function App() {
   }, [dark]);
 
   useEffect(() => {
-    const id = setInterval(() => setActiveSlide(p => (p + 1) % carouselImages.length), 5000);
+    // Pré-carrega a próxima imagem antes da transição
+    const preloadNext = (current) => {
+      const nextIdx = (current + 1) % carouselImages.length;
+      preloadImage(carouselImages[nextIdx].src);
+    };
+    preloadNext(0); // pré-carrega a segunda ao montar
+    const id = setInterval(() => {
+      setActiveSlide(p => {
+        const next = (p + 1) % carouselImages.length;
+        preloadNext(next);
+        return next;
+      });
+    }, 5000);
     return () => clearInterval(id);
   }, []);
 
@@ -528,8 +548,21 @@ function App() {
       {/* HERO */}
       <div className="relative h-screen flex items-center justify-center overflow-hidden">
         <AnimatePresence mode="wait">
-          <motion.div key={activeSlide} initial={{ opacity: 0, scale: 1.08 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.2 }} className="absolute inset-0">
-            <img src={carouselImages[activeSlide].src} alt={carouselImages[activeSlide].title} className="h-full w-full object-cover" />
+          <motion.div key={activeSlide}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.7, ease: 'easeInOut' }}
+            className="absolute inset-0">
+            {/* loading="lazy" + decoding="async" — não bloqueia main thread */}
+            <img
+              src={carouselImages[activeSlide].src}
+              alt={carouselImages[activeSlide].title}
+              className="h-full w-full object-cover"
+              loading={activeSlide === 0 ? 'eager' : 'lazy'}
+              decoding="async"
+              fetchPriority={activeSlide === 0 ? 'high' : 'low'}
+            />
             <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/35 to-black/70" />
           </motion.div>
         </AnimatePresence>
