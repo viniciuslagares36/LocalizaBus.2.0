@@ -200,8 +200,6 @@ export async function getAllLiveVehicles() {
   return normalizeDftransResponse(data);
 }
 
-export async function getLiveVehiclesByLine(line) {
-  const normalizedLine = normalizeLine(line);
 
   if (!normalizedLine) return [];
 
