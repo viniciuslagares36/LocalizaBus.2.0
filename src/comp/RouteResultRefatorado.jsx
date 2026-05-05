@@ -412,15 +412,13 @@ const visibleBusRoutes = useMemo(() => {
 
       return distA - distB;
     })
-    .slice(0, 3);
+    .slice(0, 5);
 }, [processedRoutes]);
 
 const liveMarkers = useMemo(
   () =>
     visibleBusRoutes.map((route, index) => ({
-      id: route.realTimeGPS.numero
-        ? `bus_${route.line}_${route.realTimeGPS.numero}`
-        : `bus_${route.line}_${index}_${Number(route.realTimeGPS.lat).toFixed(5)}_${Number(route.realTimeGPS.lon).toFixed(5)}`,
+      id: `bus_${route.id || index}_${route.line}_${route.realTimeGPS.numero || index}`,
       lat: Number(route.realTimeGPS.lat),
       lon: Number(route.realTimeGPS.lon),
       type: 'bus',
@@ -449,7 +447,6 @@ const liveCenter = useMemo(() => {
   const firstBus = liveMarkers[0];
   return firstBus ? [firstBus.lon, firstBus.lat] : null;
 }, [processedRoutes, liveMarkers]);
-
   const handleWalkOpen = useCallback(route => setWalkRoute(route), []);
   const handleClose = useCallback(() => setWalkRoute(null), []);
 

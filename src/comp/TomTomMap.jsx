@@ -56,29 +56,66 @@ const escapeHtml = (value) =>
 const toStopsGeoJson = (stops = []) => ({
   type: 'FeatureCollection',
   features: stops
-    .filter((stop) => stop?.position?.lat && stop?.position?.lon)
-    .map((stop) => ({
-      type: 'Feature',
-      geometry: {
-        type: 'Point',
-        coordinates: [Number(stop.position.lon), Number(stop.position.lat)],
-      },
-      properties: {
-        id: stop.stopId || stop.id || '',
-        name: stop.name || stop.stopName || 'Parada de ônibus',
-        source: stop.source || 'SEMOB',
-      },
-    })),
+    .map((stop) => {
+      const lat = Number(stop?.position?.lat ?? stop?.lat);
+      const lon = Number(stop?.position?.lon ?? stop?.lon);
+
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+
+      return {
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [lon, lat],
+        },
+        properties: {
+          id: stop.stopId || stop.id || '',
+          code: stop.code || stop.stopCode || '',
+          name: stop.name || stop.stopName || 'Parada de ônibus',
+          source: stop.source || 'SEMOB',
+        },
+      };
+    })
+    .filter(Boolean),
 });
 
-const loadImageForMap = (url) =>
-  new Promise((resolve, reject) => {
+const loadMapImage = (map, name, url) =>
+  new Promise((resolve) => {
+    if (!map || !url) {
+      resolve(false);
+      return;
+    }
+
+    try {
+      if (map.hasImage?.(name)) {
+        resolve(true);
+        return;
+      }
+    } catch (_) {}
+
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = reject;
+
+    img.onload = () => {
+      try {
+        if (!map.hasImage?.(name)) {
+          map.addImage(name, img, { pixelRatio: 2 });
+        }
+        resolve(true);
+      } catch (error) {
+        console.warn(`[TomTomMap] Erro ao adicionar imagem ${name}:`, error);
+        resolve(false);
+      }
+    };
+
+    img.onerror = () => {
+      console.warn(`[TomTomMap] Não carregou imagem: ${url}`);
+      resolve(false);
+    };
+
     img.src = url;
   });
+
 
 const createBusMarkerElement = (marker) => {
   const el = document.createElement('div');
@@ -89,17 +126,15 @@ const createBusMarkerElement = (marker) => {
   el.style.justifyContent = 'center';
   el.style.cursor = 'pointer';
   el.style.pointerEvents = 'auto';
-  el.style.width = '26px';
-  el.style.height = '26px';
-  el.style.transform = 'translateZ(0)';
-  el.style.willChange = 'transform';
+  el.style.width = '20px';
+  el.style.height = '20px';
 
   const img = document.createElement('img');
   img.src = BUS_ICON_URL;
   img.alt = 'Ônibus';
   img.draggable = false;
-  img.style.width = '22px';
-  img.style.height = '22px';
+  img.style.width = '18px';
+  img.style.height = '18px';
   img.style.objectFit = 'contain';
   img.style.filter = 'drop-shadow(0 2px 5px rgba(0,0,0,0.55))';
 
@@ -123,7 +158,7 @@ const createBusMarkerElement = (marker) => {
     badge.style.borderRadius = '999px';
     badge.style.background = 'rgba(0,0,0,0.82)';
     badge.style.color = '#fff';
-    badge.style.fontSize = '8px';
+    badge.style.fontSize = '7px';
     badge.style.fontWeight = '800';
     badge.style.lineHeight = '1';
     badge.style.whiteSpace = 'nowrap';
@@ -289,64 +324,64 @@ const TomTomMap = ({
         map.getSource('semob-stops').setData(stopsGeoJson);
       }
 
-      // Tenta usar o SVG da placa.
-      // Se o navegador/TomTom não aceitar SVG como image layer, cai no círculo.
-      try {
-        if (!map.hasImage?.('bus-stop-icon')) {
-          const stopIcon = await loadImageForMap(BUS_STOP_ICON_URL);
-          map.addImage('bus-stop-icon', stopIcon, { pixelRatio: 2 });
-        }
+      const hasStopIcon = await loadMapImage(map, 'bus-stop-icon', BUS_STOP_ICON_URL);
 
-        if (!map.getLayer('semob-stops-icons')) {
-          map.addLayer({
-            id: 'semob-stops-icons',
-            type: 'symbol',
-            source: 'semob-stops',
-            minzoom: 14,
-            layout: {
-              'icon-image': 'bus-stop-icon',
-              'icon-size': [
-                'interpolate',
-                ['linear'],
-                ['zoom'],
-                14,
-                0.025,
-                16,
-                0.04,
-                18,
-                0.06,
-              ],
-              'icon-allow-overlap': false,
-              'icon-ignore-placement': false,
-            },
-          });
-        }
-      } catch (_) {
-        if (!map.getLayer('semob-stops-circles')) {
-          map.addLayer({
-            id: 'semob-stops-circles',
-            type: 'circle',
-            source: 'semob-stops',
-            minzoom: 13,
-            paint: {
-              'circle-radius': [
-                'interpolate',
-                ['linear'],
-                ['zoom'],
-                13,
-                2,
-                16,
-                4,
-                18,
-                6,
-              ],
-              'circle-color': '#16a34a',
-              'circle-stroke-color': '#ffffff',
-              'circle-stroke-width': 1.2,
-              'circle-opacity': 0.9,
-            },
-          });
-        }
+      if (hasStopIcon && !map.getLayer('semob-stops-icons')) {
+        map.addLayer({
+          id: 'semob-stops-icons',
+          type: 'symbol',
+          source: 'semob-stops',
+          minzoom: 10,
+          layout: {
+            'icon-image': 'bus-stop-icon',
+            'icon-size': [
+              'interpolate',
+              ['linear'],
+              ['zoom'],
+              10,
+              0.12,
+              14,
+              0.2,
+              16,
+              0.28,
+              18,
+              0.38,
+            ],
+            'icon-allow-overlap': true,
+            'icon-ignore-placement': true,
+            'icon-anchor': 'bottom',
+          },
+        });
+      }
+
+      // Fallback visual: sempre mantém bolinhas por baixo. Se o SVG não carregar,
+      // as paradas continuam aparecendo no mapa.
+      if (!map.getLayer('semob-stops-circles')) {
+        map.addLayer({
+          id: 'semob-stops-circles',
+          type: 'circle',
+          source: 'semob-stops',
+          minzoom: 10,
+          paint: {
+            'circle-radius': [
+              'interpolate',
+              ['linear'],
+              ['zoom'],
+              10,
+              2,
+              14,
+              3,
+              16,
+              5,
+              18,
+              7,
+            ],
+            'circle-color': hasStopIcon ? 'rgba(22,163,74,0.25)' : '#16a34a',
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-width': 1.2,
+            'circle-opacity': hasStopIcon ? 0.45 : 0.95,
+          },
+        });
       }
 
       if (!map.getLayer('semob-stops-labels')) {
@@ -354,7 +389,7 @@ const TomTomMap = ({
           id: 'semob-stops-labels',
           type: 'symbol',
           source: 'semob-stops',
-          minzoom: 16,
+          minzoom: 15,
           layout: {
             'text-field': ['get', 'name'],
             'text-size': 10,
@@ -370,12 +405,13 @@ const TomTomMap = ({
         });
       }
 
-      map.on('click', 'semob-stops-icons', (e) => {
+      const openStopPopup = (e) => {
         const feature = e.features?.[0];
         if (!feature) return;
 
         const [lon, lat] = feature.geometry.coordinates;
         const name = feature.properties?.name || 'Parada de ônibus';
+        const code = feature.properties?.code ? ` • ${feature.properties.code}` : '';
 
         if (stopPopupRef.current) {
           stopPopupRef.current.remove();
@@ -384,33 +420,19 @@ const TomTomMap = ({
         stopPopupRef.current = new window.tt.Popup({ offset: 12 })
           .setLngLat([lon, lat])
           .setHTML(
-            `<div style="font-size:12px;font-weight:700;color:#111;">${escapeHtml(
+            `<div style="font-size:12px;font-weight:700;color:#111;line-height:1.35;max-width:220px;">${escapeHtml(
               name
-            )}</div>`
+            )}${escapeHtml(code)}</div>`
           )
           .addTo(map);
-      });
+      };
 
-      map.on('click', 'semob-stops-circles', (e) => {
-        const feature = e.features?.[0];
-        if (!feature) return;
+      if (!map.__semobStopsClickBound) {
+        map.__semobStopsClickBound = true;
 
-        const [lon, lat] = feature.geometry.coordinates;
-        const name = feature.properties?.name || 'Parada de ônibus';
-
-        if (stopPopupRef.current) {
-          stopPopupRef.current.remove();
-        }
-
-        stopPopupRef.current = new window.tt.Popup({ offset: 12 })
-          .setLngLat([lon, lat])
-          .setHTML(
-            `<div style="font-size:12px;font-weight:700;color:#111;">${escapeHtml(
-              name
-            )}</div>`
-          )
-          .addTo(map);
-      });
+        map.on('click', 'semob-stops-icons', openStopPopup);
+        map.on('click', 'semob-stops-circles', openStopPopup);
+      }
     } catch (error) {
       console.warn('[SEMOB stops layer] Falha ao carregar paradas:', error?.message || error);
     }
@@ -549,7 +571,7 @@ const TomTomMap = ({
 
       const ttMarker = new window.tt.Marker({
         element,
-        anchor: 'center',
+        anchor: 'bottom',
       })
         .setLngLat([marker.lon, marker.lat])
         .setPopup(
