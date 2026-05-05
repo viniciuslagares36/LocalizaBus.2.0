@@ -11,11 +11,11 @@ app.use(cors());
 app.use(express.json());
 
 app.get("/api/health", (req, res) => {
-    res.json({
-        status: "online",
-        service: "LocalizaBus Backend",
-        timestamp: new Date().toISOString()
-    });
+  res.json({
+    status: "online",
+    service: "LocalizaBus Backend",
+    timestamp: new Date().toISOString()
+  });
 });
 
 app.get("/api/realtime-vehicles", async (req, res) => {
@@ -89,5 +89,5 @@ app.get("/api/realtime-vehicles", async (req, res) => {
   }
 });
 app.listen(PORT, () => {
-    console.log(`Servidor LocalizaBus rodando na porta ${PORT}`);
+  console.log(`Servidor LocalizaBus rodando na porta ${PORT}`);
 });

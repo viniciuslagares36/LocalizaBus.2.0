@@ -5,6 +5,7 @@ import {
   ChevronDown, Circle, Navigation, Search, AlertCircle,
   Loader2, Sun, Moon, AlertTriangle
 } from 'lucide-react';
+import 'leaflet/dist/leaflet.css';
 import axios from 'axios';
 import RouteResultRefatorado from './comp/RouteResultRefatorado';
 import { normalizeTransitlandItineraryMode } from './services/transitland';
@@ -330,97 +331,97 @@ const useRouteSearch = () => {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   };
   const snapVehicleToRoute = (vehicle, route) => {
-  if (!vehicle?.lat || !vehicle?.lon) {
-    return null;
-  }
+    if (!vehicle?.lat || !vehicle?.lon) {
+      return null;
+    }
 
-  const vehicleCoords = {
-    lat: Number(vehicle.lat),
-    lon: Number(vehicle.lon),
-  };
+    const vehicleCoords = {
+      lat: Number(vehicle.lat),
+      lon: Number(vehicle.lon),
+    };
 
-  const routePoints =
-    route.routePoints?.length
-      ? route.routePoints
-      : decodeOtpPolyline(route.routeGeometry);
+    const routePoints =
+      route.routePoints?.length
+        ? route.routePoints
+        : decodeOtpPolyline(route.routeGeometry);
 
-  if (!routePoints?.length) {
+    if (!routePoints?.length) {
+      return {
+        lat: vehicleCoords.lat,
+        lon: vehicleCoords.lon,
+        snappedToRoute: false,
+        snapDistanceKm: null,
+      };
+    }
+
+    let best = null;
+
+    routePoints.forEach(([lon, lat]) => {
+      const pointCoords = {
+        lat: Number(lat),
+        lon: Number(lon),
+      };
+
+      const distanceKm = calcDist(vehicleCoords, pointCoords);
+
+      if (!best || distanceKm < best.distanceKm) {
+        best = {
+          lat: pointCoords.lat,
+          lon: pointCoords.lon,
+          distanceKm,
+        };
+      }
+    });
+
+    // Se o GPS estiver até 350m da rota oficial, gruda na rota.
+    // Se estiver mais longe, mantém GPS cru para não mentir muito.
+    if (best && best.distanceKm <= 0.35) {
+      return {
+        lat: best.lat,
+        lon: best.lon,
+        snappedToRoute: true,
+        snapDistanceKm: best.distanceKm,
+      };
+    }
+
     return {
       lat: vehicleCoords.lat,
       lon: vehicleCoords.lon,
       snappedToRoute: false,
-      snapDistanceKm: null,
+      snapDistanceKm: best?.distanceKm ?? null,
     };
-  }
-
-  let best = null;
-
-  routePoints.forEach(([lon, lat]) => {
-    const pointCoords = {
-      lat: Number(lat),
-      lon: Number(lon),
-    };
-
-    const distanceKm = calcDist(vehicleCoords, pointCoords);
-
-    if (!best || distanceKm < best.distanceKm) {
-      best = {
-        lat: pointCoords.lat,
-        lon: pointCoords.lon,
-        distanceKm,
-      };
-    }
-  });
-
-  // Se o GPS estiver até 350m da rota oficial, gruda na rota.
-  // Se estiver mais longe, mantém GPS cru para não mentir muito.
-  if (best && best.distanceKm <= 0.35) {
-    return {
-      lat: best.lat,
-      lon: best.lon,
-      snappedToRoute: true,
-      snapDistanceKm: best.distanceKm,
-    };
-  }
-
-  return {
-    lat: vehicleCoords.lat,
-    lon: vehicleCoords.lon,
-    snappedToRoute: false,
-    snapDistanceKm: best?.distanceKm ?? null,
   };
-};
 
   const findBestVehicleForRoute = (vehicles, route) => {
-  const matching = (vehicles || []).filter((vehicle) =>
-    sameLine(vehicle.line, route.line) || sameLine(vehicle.routeId, route.routeId)
-  );
+    const matching = (vehicles || []).filter((vehicle) =>
+      sameLine(vehicle.line, route.line) || sameLine(vehicle.routeId, route.routeId)
+    );
 
-  if (!matching.length) return null;
+    if (!matching.length) return null;
 
-  if (!route.nearestStopLat || !route.nearestStopLon) {
-    return matching[0];
-  }
+    if (!route.nearestStopLat || !route.nearestStopLon) {
+      return matching[0];
+    }
 
-  const stopCoords = {
-    lat: Number(route.nearestStopLat),
-    lon: Number(route.nearestStopLon),
+    const stopCoords = {
+      lat: Number(route.nearestStopLat),
+      lon: Number(route.nearestStopLon),
+    };
+
+    return matching
+      .map((vehicle) => {
+        const vehicleCoords = {
+          lat: Number(vehicle.lat),
+          lon: Number(vehicle.lon),
+        };
+
+        return {
+          vehicle,
+          distanceToStopKm: calcDist(vehicleCoords, stopCoords),
+        };
+      })
+      .sort((a, b) => a.distanceToStopKm - b.distanceToStopKm)[0]?.vehicle || null;
   };
-
-  return matching
-    .map((vehicle) => {
-      const vehicleCoords = {
-        lat: Number(vehicle.lat),
-        lon: Number(vehicle.lon),
-      };
-
-      return {
-        vehicle,
-        distanceToStopKm: calcDist(vehicleCoords, stopCoords),
-      };
-    })
-    .sort((a, b) => a.distanceToStopKm - b.distanceToStopKm)[0]?.vehicle || null;
-};
 
   const estimateEtaToStop = (vehicle, stop) => {
     if (!vehicle?.lat || !vehicle?.lon || !stop?.lat || !stop?.lon) return null;
@@ -439,80 +440,80 @@ const useRouteSearch = () => {
     return Number.isFinite(etaMin) ? Math.max(1, etaMin) : null;
   };
   const getVehicleTimestamp = (vehicle) => {
-  return vehicle?.horario || vehicle?.updatedAt || vehicle?.timestamp || null;
-};
+    return vehicle?.horario || vehicle?.updatedAt || vehicle?.timestamp || null;
+  };
 
-const getGpsAgeMinutes = (vehicle) => {
-  const timestamp = getVehicleTimestamp(vehicle);
-  if (!timestamp) return null;
+  const getGpsAgeMinutes = (vehicle) => {
+    const timestamp = getVehicleTimestamp(vehicle);
+    if (!timestamp) return null;
 
-  const gpsTime = Number(timestamp);
-  if (!Number.isFinite(gpsTime)) return null;
+    const gpsTime = Number(timestamp);
+    if (!Number.isFinite(gpsTime)) return null;
 
-  const diff = Date.now() - gpsTime;
-  if (diff < 0) return 1;
+    const diff = Date.now() - gpsTime;
+    if (diff < 0) return 1;
 
-  const minutes = Math.round(diff / 60000);
-  return Math.max(1, minutes);
-};
+    const minutes = Math.round(diff / 60000);
+    return Math.max(1, minutes);
+  };
 
-const getVehicleSpeedKmh = (vehicle) => {
-  const speed = Number(vehicle?.speed ?? vehicle?.velocidade ?? 0);
+  const getVehicleSpeedKmh = (vehicle) => {
+    const speed = Number(vehicle?.speed ?? vehicle?.velocidade ?? 0);
 
-  // Se vier velocidade confiável, usa ela.
-  if (Number.isFinite(speed) && speed >= 5 && speed <= 90) {
-    return speed;
-  }
-
-  // Média urbana realista para ônibus no DF.
-  return 22;
-};
-
-const estimateBusEtaToStop = (vehicle, stop) => {
-  if (!vehicle?.lat || !vehicle?.lon || !stop?.lat || !stop?.lon) {
-    return null;
-  }
-
-  const distanceKm = calcDist(
-    {
-      lat: Number(vehicle.lat),
-      lon: Number(vehicle.lon),
-    },
-    {
-      lat: Number(stop.lat),
-      lon: Number(stop.lon),
+    // Se vier velocidade confiável, usa ela.
+    if (Number.isFinite(speed) && speed >= 5 && speed <= 90) {
+      return speed;
     }
-  );
 
-  const speedKmh = getVehicleSpeedKmh(vehicle);
+    // Média urbana realista para ônibus no DF.
+    return 22;
+  };
 
-  // Multiplicador porque ônibus não anda em linha reta.
-  // 1.35 deixa mais próximo do mundo real sem API de rota.
-  const correctedDistanceKm = distanceKm * 1.35;
+  const estimateBusEtaToStop = (vehicle, stop) => {
+    if (!vehicle?.lat || !vehicle?.lon || !stop?.lat || !stop?.lon) {
+      return null;
+    }
 
-  const eta = Math.round((correctedDistanceKm / speedKmh) * 60);
+    const distanceKm = calcDist(
+      {
+        lat: Number(vehicle.lat),
+        lon: Number(vehicle.lon),
+      },
+      {
+        lat: Number(stop.lat),
+        lon: Number(stop.lon),
+      }
+    );
 
-  if (!Number.isFinite(eta)) return null;
+    const speedKmh = getVehicleSpeedKmh(vehicle);
 
-  return Math.max(1, eta);
-};
+    // Multiplicador porque ônibus não anda em linha reta.
+    // 1.35 deixa mais próximo do mundo real sem API de rota.
+    const correctedDistanceKm = distanceKm * 1.35;
 
-const getTargetUserStops = (nearbyStops, limit = 3) => {
-  return (nearbyStops || [])
-    .filter((stop) => stop?.lat && stop?.lon)
-    .sort((a, b) => Number(a.distanceKm || 999) - Number(b.distanceKm || 999))
-    .slice(0, limit);
-};
+    const eta = Math.round((correctedDistanceKm / speedKmh) * 60);
 
-const getBestUserStopForVehicle = (vehicle, userStops) => {
-  const stops = getTargetUserStops(userStops, 3);
+    if (!Number.isFinite(eta)) return null;
 
-  if (!stops.length) return null;
+    return Math.max(1, eta);
+  };
 
-  // Por enquanto, usa a parada mais próxima do usuário/origem.
-  // Depois dá pra evoluir para filtrar pela linha/sentido.
-  return stops[0];
-};
+  const getTargetUserStops = (nearbyStops, limit = 3) => {
+    return (nearbyStops || [])
+      .filter((stop) => stop?.lat && stop?.lon)
+      .sort((a, b) => Number(a.distanceKm || 999) - Number(b.distanceKm || 999))
+      .slice(0, limit);
+  };
+
+  const getBestUserStopForVehicle = (vehicle, userStops) => {
+    const stops = getTargetUserStops(userStops, 3);
+
+    if (!stops.length) return null;
+
+    // Por enquanto, usa a parada mais próxima do usuário/origem.
+    // Depois dá pra evoluir para filtrar pela linha/sentido.
+    return stops[0];
+  };
 
   const getNearbyStops = async (coords) => {
     try {
@@ -545,31 +546,31 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
 
       // Modo caminhada: criar uma rota com as pernas WALK
       if (mode === 'walk') {
-  const walkLegs = legs.filter(l => l.mode === 'WALK');
+        const walkLegs = legs.filter(l => l.mode === 'WALK');
 
-  if (walkLegs.length > 0 || it.duration > 0) {
-    out.push({
-      id: `walk_${idx}`,
-      line: 'A pé',
-      routeId: 'WALK',
-      destination,
-      origin,
-      time: Math.ceil(totalDur),
-      estimatedTime: totalDur,
-      stops: 0,
-      distance: totalDist.toFixed(1),
-      walkMinutes: Math.ceil(totalDur),
-      fromStop: legs[0]?.from?.name || origin,
-      toStop: legs[legs.length - 1]?.to?.name || destination,
-      mode: 'WALK',
-      instruction: `Caminhe ${totalDist.toFixed(1)} km (~${Math.ceil(totalDur)} min) até o destino`,
-      tripId: null,
-      isWalk: true,
-    });
-  }
+        if (walkLegs.length > 0 || it.duration > 0) {
+          out.push({
+            id: `walk_${idx}`,
+            line: 'A pé',
+            routeId: 'WALK',
+            destination,
+            origin,
+            time: Math.ceil(totalDur),
+            estimatedTime: totalDur,
+            stops: 0,
+            distance: totalDist.toFixed(1),
+            walkMinutes: Math.ceil(totalDur),
+            fromStop: legs[0]?.from?.name || origin,
+            toStop: legs[legs.length - 1]?.to?.name || destination,
+            mode: 'WALK',
+            instruction: `Caminhe ${totalDist.toFixed(1)} km (~${Math.ceil(totalDur)} min) até o destino`,
+            tripId: null,
+            isWalk: true,
+          });
+        }
 
-  return;
-}
+        return;
+      }
       // Modo ônibus/metrô: pegar legs de transporte
       const transit = legs.filter(l => l.mode && normalizeTransitlandItineraryMode(l.mode) !== 'WALK');
       const walkTime = legs.filter(l => normalizeTransitlandItineraryMode(l.mode) === 'WALK').reduce((s, l) => s + (l.duration || 0), 0) / 60;
@@ -577,184 +578,184 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
         const routeId = leg.route || leg.routeId || leg.routeId || leg.trip?.routeId || leg.routeLongName || 'N/A';
         const shortName = leg.routeShortName || leg.route || leg.trip?.routeShortName || routeId;
         const normalizedMode = normalizeTransitlandItineraryMode(leg.mode);
-out.push({
-  id: `${routeId}_${idx}_${li}`,
-  line: shortName,
-  routeId,
-  destination,
-  origin,
-  time: Math.ceil((leg.duration || it.duration || 0) / 60),
-  estimatedTime: Math.ceil(totalDur),
-  stops: leg.intermediateStops?.length || leg.to?.stopSequence || 0,
-  distance: ((leg.distance || 0) / 1000).toFixed(1),
-  walkMinutes: Math.ceil(walkTime),
-  fromStop: leg.from?.name || 'Ponto de embarque',
-  toStop: leg.to?.name || 'Ponto de desembarque',
+        out.push({
+          id: `${routeId}_${idx}_${li}`,
+          line: shortName,
+          routeId,
+          destination,
+          origin,
+          time: Math.ceil((leg.duration || it.duration || 0) / 60),
+          estimatedTime: Math.ceil(totalDur),
+          stops: leg.intermediateStops?.length || leg.to?.stopSequence || 0,
+          distance: ((leg.distance || 0) / 1000).toFixed(1),
+          walkMinutes: Math.ceil(walkTime),
+          fromStop: leg.from?.name || 'Ponto de embarque',
+          toStop: leg.to?.name || 'Ponto de desembarque',
 
-  nearestStopName: leg.from?.name || 'Ponto de embarque',
-nearestStopLat: leg.from?.lat || leg.from?.stop?.lat || null,
-nearestStopLon: leg.from?.lon || leg.from?.stop?.lon || null,
+          nearestStopName: leg.from?.name || 'Ponto de embarque',
+          nearestStopLat: leg.from?.lat || leg.from?.stop?.lat || null,
+          nearestStopLon: leg.from?.lon || leg.from?.stop?.lon || null,
 
-routeGeometry: leg.legGeometry?.points || null,
-routeGeometryLength: leg.legGeometry?.length || 0,
-routePoints: decodeOtpPolyline(leg.legGeometry?.points),
+          routeGeometry: leg.legGeometry?.points || null,
+          routeGeometryLength: leg.legGeometry?.length || 0,
+          routePoints: decodeOtpPolyline(leg.legGeometry?.points),
 
-mode: normalizedMode,
-  source: 'Mobilibus OTP',
-  instruction: `Pegue ${normalizedMode === 'METRO' ? 'o metrô' : 'a linha'} ${shortName} no ponto ${leg.from?.name || 'próximo'}`,
-  tripId: leg.tripId || leg.trip?.id,
-  isLive: false,
-});
+          mode: normalizedMode,
+          source: 'Mobilibus OTP',
+          instruction: `Pegue ${normalizedMode === 'METRO' ? 'o metrô' : 'a linha'} ${shortName} no ponto ${leg.from?.name || 'próximo'}`,
+          tripId: leg.tripId || leg.trip?.id,
+          isLive: false,
+        });
       });
     });
     return out.slice(0, 5);
   };
 
-const buildLiveBusRoutes = (
-  vehicles,
-  originCoords,
-  destinationCoords,
-  originAddress,
-  destinationAddress,
-  nearbyStops = []
-) => {
-  const userTargetStops = getTargetUserStops(nearbyStops, 3);
+  const buildLiveBusRoutes = (
+    vehicles,
+    originCoords,
+    destinationCoords,
+    originAddress,
+    destinationAddress,
+    nearbyStops = []
+  ) => {
+    const userTargetStops = getTargetUserStops(nearbyStops, 3);
 
-  const withLine = (vehicles || [])
-    .filter((vehicle) => {
-      return (
-        vehicle?.valid !== false &&
-        vehicle?.line &&
-        vehicle?.lat &&
-        vehicle?.lon
-      );
-    })
-    .map((vehicle) => {
-      const vehicleCoords = {
-        lat: Number(vehicle.lat),
-        lon: Number(vehicle.lon),
-      };
+    const withLine = (vehicles || [])
+      .filter((vehicle) => {
+        return (
+          vehicle?.valid !== false &&
+          vehicle?.line &&
+          vehicle?.lat &&
+          vehicle?.lon
+        );
+      })
+      .map((vehicle) => {
+        const vehicleCoords = {
+          lat: Number(vehicle.lat),
+          lon: Number(vehicle.lon),
+        };
 
-      const distanceToOriginKm = calcDist(originCoords, vehicleCoords);
+        const distanceToOriginKm = calcDist(originCoords, vehicleCoords);
 
-      const distanceToDestinationKm = calcDist(destinationCoords, vehicleCoords);
+        const distanceToDestinationKm = calcDist(destinationCoords, vehicleCoords);
 
-      const gpsUpdatedMinutes = getGpsAgeMinutes(vehicle);
+        const gpsUpdatedMinutes = getGpsAgeMinutes(vehicle);
 
-      const targetStop = getBestUserStopForVehicle(vehicle, userTargetStops);
+        const targetStop = getBestUserStopForVehicle(vehicle, userTargetStops);
 
-      const distanceToTargetStopKm = targetStop
-        ? calcDist(vehicleCoords, {
+        const distanceToTargetStopKm = targetStop
+          ? calcDist(vehicleCoords, {
             lat: Number(targetStop.lat),
             lon: Number(targetStop.lon),
           })
-        : distanceToOriginKm;
+          : distanceToOriginKm;
 
-      const etaToNearestStopMinutes = targetStop
-        ? estimateBusEtaToStop(vehicle, targetStop)
-        : null;
+        const etaToNearestStopMinutes = targetStop
+          ? estimateBusEtaToStop(vehicle, targetStop)
+          : null;
+
+        return {
+          ...vehicle,
+          distanceToOriginKm,
+          distanceToDestinationKm,
+          distanceToTargetStopKm,
+          gpsUpdatedMinutes,
+          targetStop,
+          etaToNearestStopMinutes,
+        };
+      })
+      // Primeiro mostra ônibus mais perto da parada/origem do usuário.
+      .sort((a, b) => {
+        const etaA = a.etaToNearestStopMinutes ?? 9999;
+        const etaB = b.etaToNearestStopMinutes ?? 9999;
+
+        if (etaA !== etaB) return etaA - etaB;
+
+        return Number(a.distanceToTargetStopKm || 999) - Number(b.distanceToTargetStopKm || 999);
+      });
+
+    const candidates = withLine
+      .filter((vehicle) => vehicle.distanceToTargetStopKm <= 6)
+      .slice(0, 5);
+
+    const selected = candidates.length ? candidates : withLine.slice(0, 5);
+
+    return selected.map((vehicle, index) => {
+      const operatorName = getVehicleOperatorName(vehicle);
+      const timestamp = getVehicleTimestamp(vehicle);
+      const targetStop = vehicle.targetStop;
+
+      const etaToNearestStopMinutes = vehicle.etaToNearestStopMinutes;
+
+      const walkMinutes = targetStop?.distanceKm
+        ? Math.max(1, Math.ceil((Number(targetStop.distanceKm) / 4.8) * 60))
+        : Math.max(1, Math.ceil((vehicle.distanceToOriginKm / 4.8) * 60));
+
+      const stopName =
+        targetStop?.stopName ||
+        targetStop?.name ||
+        'parada próxima';
 
       return {
-        ...vehicle,
-        distanceToOriginKm,
-        distanceToDestinationKm,
-        distanceToTargetStopKm,
-        gpsUpdatedMinutes,
-        targetStop,
+        id: `dftrans_live_${vehicle.numero || index}_${vehicle.line}`,
+        line: vehicle.line,
+        routeId: vehicle.line,
+
+        destination: destinationAddress,
+        origin: originAddress,
+
+        // AGORA é tempo estimado até a parada do usuário.
+        time: etaToNearestStopMinutes,
         etaToNearestStopMinutes,
-      };
-    })
-    // Primeiro mostra ônibus mais perto da parada/origem do usuário.
-    .sort((a, b) => {
-      const etaA = a.etaToNearestStopMinutes ?? 9999;
-      const etaB = b.etaToNearestStopMinutes ?? 9999;
 
-      if (etaA !== etaB) return etaA - etaB;
+        // Separado: idade do GPS.
+        gpsUpdatedMinutes: vehicle.gpsUpdatedMinutes,
 
-      return Number(a.distanceToTargetStopKm || 999) - Number(b.distanceToTargetStopKm || 999);
-    });
+        estimatedTime: etaToNearestStopMinutes,
+        stops: 0,
 
-const candidates = withLine
-  .filter((vehicle) => vehicle.distanceToTargetStopKm <= 6)
-  .slice(0, 5);
+        distance: Number(vehicle.distanceToTargetStopKm || vehicle.distanceToOriginKm || 0).toFixed(1),
+        walkMinutes,
 
-const selected = candidates.length ? candidates : withLine.slice(0, 5);
+        fromStop: stopName,
+        toStop: destinationAddress,
 
-  return selected.map((vehicle, index) => {
-    const operatorName = getVehicleOperatorName(vehicle);
-    const timestamp = getVehicleTimestamp(vehicle);
-    const targetStop = vehicle.targetStop;
+        mode: 'BUS',
+        source: 'DFTrans GPS / DF no Ponto',
+        instruction: targetStop
+          ? `Linha ${vehicle.line} estimada para passar em ${stopName} em cerca de ${etaToNearestStopMinutes ?? '--'} min. Sentido: ${vehicle.sentido || 'não informado'}. Velocidade: ${Math.round(vehicle.speed || vehicle.velocidade || 0)} km/h.`
+          : `Linha ${vehicle.line} detectada ao vivo pela ${operatorName}. Sentido: ${vehicle.sentido || 'não informado'}.`,
 
-    const etaToNearestStopMinutes = vehicle.etaToNearestStopMinutes;
+        tripId: null,
+        isLive: true,
+        isGpsOnly: true,
 
-    const walkMinutes = targetStop?.distanceKm
-      ? Math.max(1, Math.ceil((Number(targetStop.distanceKm) / 4.8) * 60))
-      : Math.max(1, Math.ceil((vehicle.distanceToOriginKm / 4.8) * 60));
-
-    const stopName =
-      targetStop?.stopName ||
-      targetStop?.name ||
-      'parada próxima';
-
-    return {
-      id: `dftrans_live_${vehicle.numero || index}_${vehicle.line}`,
-      line: vehicle.line,
-      routeId: vehicle.line,
-
-      destination: destinationAddress,
-      origin: originAddress,
-
-      // AGORA é tempo estimado até a parada do usuário.
-      time: etaToNearestStopMinutes,
-      etaToNearestStopMinutes,
-
-      // Separado: idade do GPS.
-      gpsUpdatedMinutes: vehicle.gpsUpdatedMinutes,
-
-      estimatedTime: etaToNearestStopMinutes,
-      stops: 0,
-
-      distance: Number(vehicle.distanceToTargetStopKm || vehicle.distanceToOriginKm || 0).toFixed(1),
-      walkMinutes,
-
-      fromStop: stopName,
-      toStop: destinationAddress,
-
-      mode: 'BUS',
-      source: 'DFTrans GPS / DF no Ponto',
-      instruction: targetStop
-        ? `Linha ${vehicle.line} estimada para passar em ${stopName} em cerca de ${etaToNearestStopMinutes ?? '--'} min. Sentido: ${vehicle.sentido || 'não informado'}. Velocidade: ${Math.round(vehicle.speed || vehicle.velocidade || 0)} km/h.`
-        : `Linha ${vehicle.line} detectada ao vivo pela ${operatorName}. Sentido: ${vehicle.sentido || 'não informado'}.`,
-
-      tripId: null,
-      isLive: true,
-      isGpsOnly: true,
-
-      // Coordenada real do ônibus.
-      lat: Number(vehicle.lat),
-      lon: Number(vehicle.lon),
-
-      // Coordenada da parada do usuário.
-      nearestStopName: stopName,
-      nearestStopLat: targetStop?.lat || null,
-      nearestStopLon: targetStop?.lon || null,
-      nearestStopDistanceKm: targetStop?.distanceKm ?? null,
-
-      realTimeGPS: {
+        // Coordenada real do ônibus.
         lat: Number(vehicle.lat),
         lon: Number(vehicle.lon),
-        bearing: vehicle.bearing ?? vehicle.direcao ?? 0,
-        speed: vehicle.speed ?? vehicle.velocidade ?? 0,
-        horario: timestamp,
-        updatedAt: timestamp,
-        numero: vehicle.numero,
-        line: vehicle.line,
-        sentido: vehicle.sentido || null,
-        operadora: operatorName,
-      },
-    };
-  });
-};
+
+        // Coordenada da parada do usuário.
+        nearestStopName: stopName,
+        nearestStopLat: targetStop?.lat || null,
+        nearestStopLon: targetStop?.lon || null,
+        nearestStopDistanceKm: targetStop?.distanceKm ?? null,
+
+        realTimeGPS: {
+          lat: Number(vehicle.lat),
+          lon: Number(vehicle.lon),
+          bearing: vehicle.bearing ?? vehicle.direcao ?? 0,
+          speed: vehicle.speed ?? vehicle.velocidade ?? 0,
+          horario: timestamp,
+          updatedAt: timestamp,
+          numero: vehicle.numero,
+          line: vehicle.line,
+          sentido: vehicle.sentido || null,
+          operadora: operatorName,
+        },
+      };
+    });
+  };
 
   const buildLiveBusLineRoutes = (vehicles, linha, originAddress, destinationAddress) => {
     return (vehicles || [])
@@ -815,47 +816,47 @@ const selected = candidates.length ? candidates : withLine.slice(0, 5);
       });
   };
 
-const searchBusLine = async (linha, originAddress, destinationAddress) => {
-  if (!linha || isSearchingRef.current) return;
+  const searchBusLine = async (linha, originAddress, destinationAddress) => {
+    if (!linha || isSearchingRef.current) return;
 
-  abortControllerRef.current?.abort();
-  abortControllerRef.current = new AbortController();
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
 
-  isSearchingRef.current = true;
-  setLoading(true);
-  setError(null);
+    isSearchingRef.current = true;
+    setLoading(true);
+    setError(null);
 
-  try {
-    window.__lastLiveLine = linha;
-    window.__lastSearchType = 'line';
+    try {
+      window.__lastLiveLine = linha;
+      window.__lastSearchType = 'line';
 
-    const vehicles = await getLiveVehiclesByLine(linha);
+      const vehicles = await getLiveVehiclesByLine(linha);
 
-    if (!vehicles?.length) {
+      if (!vehicles?.length) {
+        setRoutes([]);
+        setRealtimeVehicles([]);
+        setError(`Nenhum ônibus ao vivo encontrado para a linha ${linha}.`);
+        return;
+      }
+
+      const liveRoutes = buildLiveBusLineRoutes(
+        vehicles,
+        linha,
+        originAddress || linha,
+        destinationAddress || 'ônibus ao vivo'
+      );
+
+      setRealtimeVehicles(vehicles);
+      setRoutes(liveRoutes);
+    } catch (error) {
+      console.error('[DFTrans GPS] Erro ao buscar linha ao vivo:', error);
       setRoutes([]);
-      setRealtimeVehicles([]);
-      setError(`Nenhum ônibus ao vivo encontrado para a linha ${linha}.`);
-      return;
+      setError('Não foi possível buscar ônibus ao vivo agora.');
+    } finally {
+      setLoading(false);
+      isSearchingRef.current = false;
     }
-
-    const liveRoutes = buildLiveBusLineRoutes(
-      vehicles,
-      linha,
-      originAddress || linha,
-      destinationAddress || 'ônibus ao vivo'
-    );
-
-    setRealtimeVehicles(vehicles);
-    setRoutes(liveRoutes);
-  } catch (error) {
-    console.error('[DFTrans GPS] Erro ao buscar linha ao vivo:', error);
-    setRoutes([]);
-    setError('Não foi possível buscar ônibus ao vivo agora.');
-  } finally {
-    setLoading(false);
-    isSearchingRef.current = false;
-  }
-};
+  };
   const searchRoute = async (originAddress, destinationAddress, mode) => {
     if (!originAddress || !destinationAddress || isSearchingRef.current) return;
     abortControllerRef.current?.abort();
@@ -868,18 +869,18 @@ const searchBusLine = async (linha, originAddress, destinationAddress) => {
         geocodeAddress(originAddress, signal),
         geocodeAddress(destinationAddress, signal)
       ]);
-const realtimeData = await getRealtimeVehicles(signal);
+      const realtimeData = await getRealtimeVehicles(signal);
 
-const transitRoute = await getTransportPlan(originCoords, destCoords, signal, mode);
-const nearbyStops = await getNearbyStops(originCoords);
+      const transitRoute = await getTransportPlan(originCoords, destCoords, signal, mode);
+      const nearbyStops = await getNearbyStops(originCoords);
 
-window.__lastOriginCoords = originCoords;
-window.__lastDestinationCoords = destCoords;
-window.__lastOriginAddress = originAddress;
-window.__lastDestinationAddress = destinationAddress;
-window.__lastNearbyStops = nearbyStops;
-window.__lastSearchMode = mode;
-window.__lastSearchType = mode === 'bus' ? 'route' : mode;
+      window.__lastOriginCoords = originCoords;
+      window.__lastDestinationCoords = destCoords;
+      window.__lastOriginAddress = originAddress;
+      window.__lastDestinationAddress = destinationAddress;
+      window.__lastNearbyStops = nearbyStops;
+      window.__lastSearchMode = mode;
+      window.__lastSearchType = mode === 'bus' ? 'route' : mode;
 
       let combined = combineRoutes(transitRoute, nearbyStops, originAddress, destinationAddress, mode);
 
@@ -943,41 +944,41 @@ window.__lastSearchType = mode === 'bus' ? 'route' : mode;
         }];
       }
       setRoutes(combined.map((r) => {
-  const rv = findBestVehicleForRoute(realtimeData, r);
+        const rv = findBestVehicleForRoute(realtimeData, r);
 
-  if (rv) {
-    const etaMin = getEtaMinutes(rv.eta);
-    const snappedPosition = snapVehicleToRoute(rv, r);
+        if (rv) {
+          const etaMin = getEtaMinutes(rv.eta);
+          const snappedPosition = snapVehicleToRoute(rv, r);
 
-    return {
-      ...r,
-      time: etaMin ?? r.time,
-      realTimeGPS: {
-        lat: snappedPosition?.lat ?? Number(rv.lat),
-        lon: snappedPosition?.lon ?? Number(rv.lon),
+          return {
+            ...r,
+            time: etaMin ?? r.time,
+            realTimeGPS: {
+              lat: snappedPosition?.lat ?? Number(rv.lat),
+              lon: snappedPosition?.lon ?? Number(rv.lon),
 
-        rawLat: Number(rv.lat),
-        rawLon: Number(rv.lon),
+              rawLat: Number(rv.lat),
+              rawLon: Number(rv.lon),
 
-        snappedToRoute: snappedPosition?.snappedToRoute || false,
-        snapDistanceKm: snappedPosition?.snapDistanceKm ?? null,
+              snappedToRoute: snappedPosition?.snappedToRoute || false,
+              snapDistanceKm: snappedPosition?.snapDistanceKm ?? null,
 
-        bearing: rv.bearing,
-        speed: rv.speed,
-        eta: rv.eta,
-        horario: rv.horario || rv.updatedAt,
-        updatedAt: rv.updatedAt || rv.horario,
-        numero: rv.numero,
-        line: rv.line,
-        sentido: rv.sentido || null,
-        operadora: getVehicleOperatorName(rv),
-      },
-      isLive: true,
-    };
-  }
+              bearing: rv.bearing,
+              speed: rv.speed,
+              eta: rv.eta,
+              horario: rv.horario || rv.updatedAt,
+              updatedAt: rv.updatedAt || rv.horario,
+              numero: rv.numero,
+              line: rv.line,
+              sentido: rv.sentido || null,
+              operadora: getVehicleOperatorName(rv),
+            },
+            isLive: true,
+          };
+        }
 
-  return r.isLive ? r : { ...r, isLive: false };
-}));
+        return r.isLive ? r : { ...r, isLive: false };
+      }));
     } catch (err) {
       if (!axios.isCancel(err) && err.name !== 'AbortError') setError(err.message || 'Erro ao buscar rotas');
     } finally {
@@ -1018,13 +1019,13 @@ window.__lastSearchType = mode === 'bus' ? 'route' : mode;
           const baseRoutes = window.__lastOtpRoutes?.length
             ? window.__lastOtpRoutes
             : buildLiveBusRoutes(
-                nv,
-                window.__lastOriginCoords,
-                window.__lastDestinationCoords,
-                window.__lastOriginAddress || 'origem',
-                window.__lastDestinationAddress || 'destino',
-                window.__lastNearbyStops || []
-              );
+              nv,
+              window.__lastOriginCoords,
+              window.__lastDestinationCoords,
+              window.__lastOriginAddress || 'origem',
+              window.__lastDestinationAddress || 'destino',
+              window.__lastNearbyStops || []
+            );
 
           const rebuiltRoutes = baseRoutes.map((r) => {
             const rv = findBestVehicleForRoute(nv, r);
@@ -1086,14 +1087,14 @@ window.__lastSearchType = mode === 'bus' ? 'route' : mode;
   }, [getRealtimeVehicles]);
 
 
-return {
-  routes,
-  loading,
-  error,
-  searchRoute,
-  searchBusLine,
-  realtimeVehicles,
-};
+  return {
+    routes,
+    loading,
+    error,
+    searchRoute,
+    searchBusLine,
+    realtimeVehicles,
+  };
 };
 
 // ─── LOCATION INPUT ──────────────────────────────
@@ -1326,12 +1327,12 @@ function App() {
   const [dark, setDark] = useState(() => { try { return localStorage.getItem('lb-theme') === 'dark'; } catch { return false; } });
   const [userLocationCoords, setUserLocationCoords] = useState(null);
   const {
-  routes,
-  loading,
-  error,
-  searchRoute,
-  searchBusLine,
-} = useRouteSearch();
+    routes,
+    loading,
+    error,
+    searchRoute,
+    searchBusLine,
+  } = useRouteSearch();
   const searchRef = useRef(null);
 
   useEffect(() => {
@@ -1375,28 +1376,28 @@ function App() {
     );
   };
 
-const handleSearch = async () => {
-  const safeO = sanitizeInput(origin);
-  const safeD = sanitizeInput(destination);
+  const handleSearch = async () => {
+    const safeO = sanitizeInput(origin);
+    const safeD = sanitizeInput(destination);
 
-  if (!safeO || !safeD) return;
+    if (!safeO || !safeD) return;
 
-  setHasSearched(true);
+    setHasSearched(true);
 
-  if (selectedMode === 'bus') {
-    if (isBusLineSearch(safeO)) {
-      await searchBusLine(safeO, safeO, safeD);
-      return;
+    if (selectedMode === 'bus') {
+      if (isBusLineSearch(safeO)) {
+        await searchBusLine(safeO, safeO, safeD);
+        return;
+      }
+
+      if (isBusLineSearch(safeD)) {
+        await searchBusLine(safeD, safeO, safeD);
+        return;
+      }
     }
 
-    if (isBusLineSearch(safeD)) {
-      await searchBusLine(safeD, safeO, safeD);
-      return;
-    }
-  }
-
-  await searchRoute(safeO, safeD, selectedMode);
-};
+    await searchRoute(safeO, safeD, selectedMode);
+  };
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] transition-colors duration-500 font-apple">

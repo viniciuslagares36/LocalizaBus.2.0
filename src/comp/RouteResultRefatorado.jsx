@@ -7,7 +7,7 @@ import React, { useMemo, useCallback, useState, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bus, Train, Clock, MapPin, Footprints, ArrowRight, ExternalLink } from 'lucide-react';
 import WalkingMapModal from './WalkingMapModal';
-import TomTomMap from './TomTomMap';
+import LeafletMap from './LeafletMap';
 import { calcularDistancia, calcularTempoCaminhada, identificarBacia } from '../config/busConfig';
 
 // ─── Constantes fora do componente ───────────────────────────────────────────
@@ -346,9 +346,8 @@ const RouteCard = memo(({ route, idx, onWalkOpen }) => {
               <motion.button
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.95 }}
-                className={`rounded-full px-4 py-1.5 text-xs font-semibold text-white ${
-                  route.isLive ? 'bg-green-600' : 'bg-blue-500'
-                }`}
+                className={`rounded-full px-4 py-1.5 text-xs font-semibold text-white ${route.isLive ? 'bg-green-600' : 'bg-blue-500'
+                  }`}
               >
                 {route.isLive ? 'Ver mapa' : 'Detalhes'}
               </motion.button>
@@ -398,55 +397,54 @@ const RouteResultRefatorado = ({ routes, origin, destination, loading, userLocat
     () => processedRoutes.some(r => r.isLive),
     [processedRoutes]
   );
-const visibleBusRoutes = useMemo(() => {
-  return processedRoutes
-    .filter((route) => route.realTimeGPS?.lat && route.realTimeGPS?.lon)
-    .sort((a, b) => {
-      const etaA = Number(a.etaToNearestStopMinutes ?? a.time ?? 9999);
-      const etaB = Number(b.etaToNearestStopMinutes ?? b.time ?? 9999);
+  const visibleBusRoutes = useMemo(() => {
+    return processedRoutes
+      .filter((route) => route.realTimeGPS?.lat && route.realTimeGPS?.lon)
+      .sort((a, b) => {
+        const etaA = Number(a.etaToNearestStopMinutes ?? a.time ?? 9999);
+        const etaB = Number(b.etaToNearestStopMinutes ?? b.time ?? 9999);
 
-      if (etaA !== etaB) return etaA - etaB;
+        if (etaA !== etaB) return etaA - etaB;
 
-      const distA = Number(a.distance ?? 9999);
-      const distB = Number(b.distance ?? 9999);
+        const distA = Number(a.distance ?? 9999);
+        const distB = Number(b.distance ?? 9999);
 
-      return distA - distB;
-    })
-    .slice(0, 5);
-}, [processedRoutes]);
+        return distA - distB;
+      })
+      .slice(0, 5);
+  }, [processedRoutes]);
 
-const liveMarkers = useMemo(
-  () =>
-    visibleBusRoutes.map((route, index) => ({
-      id: `bus_${route.id || index}_${route.line}_${route.realTimeGPS.numero || index}`,
-      lat: Number(route.realTimeGPS.lat),
-      lon: Number(route.realTimeGPS.lon),
-      type: 'bus',
-      line: route.line,
-      bearing: route.realTimeGPS.bearing ?? 0,
-      vehicleNumber: route.realTimeGPS.numero || '',
-      popup: `Linha ${route.line} • Veículo ${
-        route.realTimeGPS.numero || 'ao vivo'
-      } • ${Math.round(route.realTimeGPS.speed || 0)} km/h`,
-    })),
-  [visibleBusRoutes]
-);
-
-const liveCenter = useMemo(() => {
-  const routeWithStop = processedRoutes.find(
-    (route) => route.nearestStopLat && route.nearestStopLon
+  const liveMarkers = useMemo(
+    () =>
+      visibleBusRoutes.map((route, index) => ({
+        id: `bus_${route.id || index}_${route.line}_${route.realTimeGPS.numero || index}`,
+        lat: Number(route.realTimeGPS.lat),
+        lon: Number(route.realTimeGPS.lon),
+        type: 'bus',
+        line: route.line,
+        bearing: route.realTimeGPS.bearing ?? 0,
+        vehicleNumber: route.realTimeGPS.numero || '',
+        popup: `Linha ${route.line} • Veículo ${route.realTimeGPS.numero || 'ao vivo'
+          } • ${Math.round(route.realTimeGPS.speed || 0)} km/h`,
+      })),
+    [visibleBusRoutes]
   );
 
-  if (routeWithStop) {
-    return [
-      Number(routeWithStop.nearestStopLon),
-      Number(routeWithStop.nearestStopLat),
-    ];
-  }
+  const liveCenter = useMemo(() => {
+    const routeWithStop = processedRoutes.find(
+      (route) => route.nearestStopLat && route.nearestStopLon
+    );
 
-  const firstBus = liveMarkers[0];
-  return firstBus ? [firstBus.lon, firstBus.lat] : null;
-}, [processedRoutes, liveMarkers]);
+    if (routeWithStop) {
+      return [
+        Number(routeWithStop.nearestStopLon),
+        Number(routeWithStop.nearestStopLat),
+      ];
+    }
+
+    const firstBus = liveMarkers[0];
+    return firstBus ? [firstBus.lon, firstBus.lat] : null;
+  }, [processedRoutes, liveMarkers]);
   const handleWalkOpen = useCallback(route => setWalkRoute(route), []);
   const handleClose = useCallback(() => setWalkRoute(null), []);
 
@@ -509,17 +507,15 @@ const liveCenter = useMemo(() => {
         {/* Status GPS */}
         <div className="flex items-center gap-2">
           <div
-            className={`h-1.5 w-1.5 rounded-full animate-pulse ${
-              hasLive ? 'bg-green-500' : 'bg-gray-400'
-            }`}
+            className={`h-1.5 w-1.5 rounded-full animate-pulse ${hasLive ? 'bg-green-500' : 'bg-gray-400'
+              }`}
           />
 
           <span
-            className={`text-[10px] font-semibold ${
-              hasLive
+            className={`text-[10px] font-semibold ${hasLive
                 ? 'text-green-600 dark:text-green-400'
                 : 'text-gray-500 dark:text-gray-400'
-            }`}
+              }`}
           >
             {hasLive ? '🚀 GPS REAL — Veículos ao vivo' : 'Dados de horários — SEMOB/DFTrans'}
           </span>

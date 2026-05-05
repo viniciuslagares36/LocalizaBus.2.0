@@ -91,7 +91,7 @@ const loadMapImage = (map, name, url) =>
         resolve(true);
         return;
       }
-    } catch (_) {}
+    } catch (_) { }
 
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -236,7 +236,7 @@ const TomTomMap = ({
     busMarkersRef.current.forEach((item) => {
       try {
         item.marker.remove();
-      } catch (_) {}
+      } catch (_) { }
     });
 
     busMarkersRef.current.clear();
@@ -307,7 +307,7 @@ const TomTomMap = ({
           'line-opacity': 0.6,
         },
       });
-    } catch (_) {}
+    } catch (_) { }
   }, []);
 
   const addStopsLayer = useCallback(async (map) => {
@@ -452,9 +452,9 @@ const TomTomMap = ({
           center: center
             ? [center[0], center[1]]
             : [
-                TOMTOM_CONFIG.CENTRO_BRASILIA.lon,
-                TOMTOM_CONFIG.CENTRO_BRASILIA.lat,
-              ],
+              TOMTOM_CONFIG.CENTRO_BRASILIA.lon,
+              TOMTOM_CONFIG.CENTRO_BRASILIA.lat,
+            ],
           zoom: 14,
           pitch: 0,
           bearing: 0,
@@ -510,7 +510,7 @@ const TomTomMap = ({
       if (map) {
         try {
           map.remove();
-        } catch (_) {}
+        } catch (_) { }
       }
 
       mapRef.current = null;
@@ -523,7 +523,7 @@ const TomTomMap = ({
 
     try {
       mapRef.current.setStyle(isDark ? STYLES.dark : STYLES.light);
-    } catch (_) {}
+    } catch (_) { }
   }, [isDark, mapLoaded]);
 
   useEffect(() => {
@@ -541,7 +541,7 @@ const TomTomMap = ({
       if (!currentKeys.has(key)) {
         try {
           item.marker.remove();
-        } catch (_) {}
+        } catch (_) { }
 
         busMarkersRef.current.delete(key);
       }
@@ -562,7 +562,7 @@ const TomTomMap = ({
               </div>`
             )
           );
-        } catch (_) {}
+        } catch (_) { }
 
         return;
       }
