@@ -308,7 +308,17 @@ const useRouteSearch = () => {
 
         return data?.plan?.itineraries || [];
       } catch (error) {
-        console.warn('[Mobilibus OTP plan]', error?.message || error);
+        const msg = String(error?.message || error || '');
+
+        const isAbort =
+          error?.name === 'AbortError' ||
+          msg.toLowerCase().includes('aborted') ||
+          msg.toLowerCase().includes('signal is aborted');
+
+        if (!isAbort) {
+          console.warn('[Mobilibus OTP plan]', msg);
+        }
+
         return [];
       }
     }
@@ -916,6 +926,11 @@ const useRouteSearch = () => {
           isStopFallback: true,
           lat: stop.lat,
           lon: stop.lon,
+          
+          nearestStopName: stop.stopName || 'Parada próxima',
+          nearestStopLat: stop.lat,
+          nearestStopLon: stop.lon,
+          nearbyStops,
         }));
       }
 
@@ -941,8 +956,15 @@ const useRouteSearch = () => {
           tripId: null,
           isWalk: true,
           isLive: false,
+          nearbyStops,
         }];
       }
+      // Anexa paradas próximas em todas as rotas para o Leaflet mostrar mais contexto no mapa.
+      combined = combined.map((route) => ({
+        ...route,
+        nearbyStops,
+      }));
+
       setRoutes(combined.map((r) => {
         const rv = findBestVehicleForRoute(realtimeData, r);
 
@@ -1027,7 +1049,12 @@ const useRouteSearch = () => {
               window.__lastNearbyStops || []
             );
 
-          const rebuiltRoutes = baseRoutes.map((r) => {
+          const baseRoutesWithStops = baseRoutes.map((route) => ({
+            ...route,
+            nearbyStops: route.nearbyStops || window.__lastNearbyStops || [],
+          }));
+
+          const rebuiltRoutes = baseRoutesWithStops.map((r) => {
             const rv = findBestVehicleForRoute(nv, r);
 
             if (rv) {
