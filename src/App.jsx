@@ -68,7 +68,46 @@ const sanitizeInput = (value) => {
     .replace(/[<>"'`]/g, '')
     .slice(0, 300);
 };
+const decodeOtpPolyline = (encoded) => {
+  if (!encoded || typeof encoded !== 'string') return [];
 
+  let index = 0;
+  const len = encoded.length;
+  let lat = 0;
+  let lng = 0;
+  const coordinates = [];
+
+  while (index < len) {
+    let b;
+    let shift = 0;
+    let result = 0;
+
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+
+    const dlat = result & 1 ? ~(result >> 1) : result >> 1;
+    lat += dlat;
+
+    shift = 0;
+    result = 0;
+
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+
+    const dlng = result & 1 ? ~(result >> 1) : result >> 1;
+    lng += dlng;
+
+    coordinates.push([lng / 1e5, lat / 1e5]);
+  }
+
+  return coordinates;
+};
 // ─── ERROR BOUNDARY ─────────────────────────────
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false }; }
@@ -290,6 +329,67 @@ const useRouteSearch = () => {
     const a = Math.sin(dLat / 2) ** 2 + Math.cos(p1.lat * Math.PI / 180) * Math.cos(p2.lat * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   };
+  const snapVehicleToRoute = (vehicle, route) => {
+  if (!vehicle?.lat || !vehicle?.lon) {
+    return null;
+  }
+
+  const vehicleCoords = {
+    lat: Number(vehicle.lat),
+    lon: Number(vehicle.lon),
+  };
+
+  const routePoints =
+    route.routePoints?.length
+      ? route.routePoints
+      : decodeOtpPolyline(route.routeGeometry);
+
+  if (!routePoints?.length) {
+    return {
+      lat: vehicleCoords.lat,
+      lon: vehicleCoords.lon,
+      snappedToRoute: false,
+      snapDistanceKm: null,
+    };
+  }
+
+  let best = null;
+
+  routePoints.forEach(([lon, lat]) => {
+    const pointCoords = {
+      lat: Number(lat),
+      lon: Number(lon),
+    };
+
+    const distanceKm = calcDist(vehicleCoords, pointCoords);
+
+    if (!best || distanceKm < best.distanceKm) {
+      best = {
+        lat: pointCoords.lat,
+        lon: pointCoords.lon,
+        distanceKm,
+      };
+    }
+  });
+
+  // Se o GPS estiver até 350m da rota oficial, gruda na rota.
+  // Se estiver mais longe, mantém GPS cru para não mentir muito.
+  if (best && best.distanceKm <= 0.35) {
+    return {
+      lat: best.lat,
+      lon: best.lon,
+      snappedToRoute: true,
+      snapDistanceKm: best.distanceKm,
+    };
+  }
+
+  return {
+    lat: vehicleCoords.lat,
+    lon: vehicleCoords.lon,
+    snappedToRoute: false,
+    snapDistanceKm: best?.distanceKm ?? null,
+  };
+};
 
   const findBestVehicleForRoute = (vehicles, route) => {
   const matching = (vehicles || []).filter((vehicle) =>
@@ -477,7 +577,7 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
         const routeId = leg.route || leg.routeId || leg.routeId || leg.trip?.routeId || leg.routeLongName || 'N/A';
         const shortName = leg.routeShortName || leg.route || leg.trip?.routeShortName || routeId;
         const normalizedMode = normalizeTransitlandItineraryMode(leg.mode);
-        out.push({
+out.push({
   id: `${routeId}_${idx}_${li}`,
   line: shortName,
   routeId,
@@ -490,10 +590,16 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
   walkMinutes: Math.ceil(walkTime),
   fromStop: leg.from?.name || 'Ponto de embarque',
   toStop: leg.to?.name || 'Ponto de desembarque',
+
   nearestStopName: leg.from?.name || 'Ponto de embarque',
-  nearestStopLat: leg.from?.lat || leg.from?.stop?.lat || null,
-  nearestStopLon: leg.from?.lon || leg.from?.stop?.lon || null,
-  mode: normalizedMode,
+nearestStopLat: leg.from?.lat || leg.from?.stop?.lat || null,
+nearestStopLon: leg.from?.lon || leg.from?.stop?.lon || null,
+
+routeGeometry: leg.legGeometry?.points || null,
+routeGeometryLength: leg.legGeometry?.length || 0,
+routePoints: decodeOtpPolyline(leg.legGeometry?.points),
+
+mode: normalizedMode,
   source: 'Mobilibus OTP',
   instruction: `Pegue ${normalizedMode === 'METRO' ? 'o metrô' : 'a linha'} ${shortName} no ponto ${leg.from?.name || 'próximo'}`,
   tripId: leg.tripId || leg.trip?.id,
@@ -777,6 +883,9 @@ window.__lastSearchType = mode === 'bus' ? 'route' : mode;
 
       let combined = combineRoutes(transitRoute, nearbyStops, originAddress, destinationAddress, mode);
 
+      // Guarda as rotas oficiais do Mobilibus/OTP para manter o snap no refresh.
+      window.__lastOtpRoutes = combined;
+
       // Fallback principal de ônibus: GPS real do DFTrans/DF no Ponto.
       if (mode === 'bus' && combined.length === 0) {
         combined = buildLiveBusRoutes(realtimeData, originCoords, destCoords, originAddress, destinationAddress, nearbyStops);
@@ -833,14 +942,42 @@ window.__lastSearchType = mode === 'bus' ? 'route' : mode;
           isLive: false,
         }];
       }
-      setRoutes(combined.map(r => {
-        const rv = findBestVehicleForRoute(realtimeData, r);
-        if (rv) {
-          const etaMin = getEtaMinutes(rv.eta);
-          return { ...r, time: etaMin ?? r.time, realTimeGPS: { lat: rv.lat, lon: rv.lon, bearing: rv.bearing, speed: rv.speed, eta: rv.eta, horario: rv.horario || rv.updatedAt, updatedAt: rv.updatedAt || rv.horario, numero: rv.numero, line: rv.line, sentido: rv.sentido || null, operadora: getVehicleOperatorName(rv) }, isLive: true };
-        }
-        return r.isLive ? r : { ...r, isLive: false };
-      }));
+      setRoutes(combined.map((r) => {
+  const rv = findBestVehicleForRoute(realtimeData, r);
+
+  if (rv) {
+    const etaMin = getEtaMinutes(rv.eta);
+    const snappedPosition = snapVehicleToRoute(rv, r);
+
+    return {
+      ...r,
+      time: etaMin ?? r.time,
+      realTimeGPS: {
+        lat: snappedPosition?.lat ?? Number(rv.lat),
+        lon: snappedPosition?.lon ?? Number(rv.lon),
+
+        rawLat: Number(rv.lat),
+        rawLon: Number(rv.lon),
+
+        snappedToRoute: snappedPosition?.snappedToRoute || false,
+        snapDistanceKm: snappedPosition?.snapDistanceKm ?? null,
+
+        bearing: rv.bearing,
+        speed: rv.speed,
+        eta: rv.eta,
+        horario: rv.horario || rv.updatedAt,
+        updatedAt: rv.updatedAt || rv.horario,
+        numero: rv.numero,
+        line: rv.line,
+        sentido: rv.sentido || null,
+        operadora: getVehicleOperatorName(rv),
+      },
+      isLive: true,
+    };
+  }
+
+  return r.isLive ? r : { ...r, isLive: false };
+}));
     } catch (err) {
       if (!axios.isCancel(err) && err.name !== 'AbortError') setError(err.message || 'Erro ao buscar rotas');
     } finally {
@@ -878,14 +1015,53 @@ window.__lastSearchType = mode === 'bus' ? 'route' : mode;
         ) {
           const nv = await getRealtimeVehicles();
 
-          const rebuiltRoutes = buildLiveBusRoutes(
-            nv,
-            window.__lastOriginCoords,
-            window.__lastDestinationCoords,
-            window.__lastOriginAddress || 'origem',
-            window.__lastDestinationAddress || 'destino',
-            window.__lastNearbyStops || []
-          );
+          const baseRoutes = window.__lastOtpRoutes?.length
+            ? window.__lastOtpRoutes
+            : buildLiveBusRoutes(
+                nv,
+                window.__lastOriginCoords,
+                window.__lastDestinationCoords,
+                window.__lastOriginAddress || 'origem',
+                window.__lastDestinationAddress || 'destino',
+                window.__lastNearbyStops || []
+              );
+
+          const rebuiltRoutes = baseRoutes.map((r) => {
+            const rv = findBestVehicleForRoute(nv, r);
+
+            if (rv) {
+              const etaMin = getEtaMinutes(rv.eta);
+              const snappedPosition = snapVehicleToRoute(rv, r);
+
+              return {
+                ...r,
+                time: etaMin ?? r.time,
+                realTimeGPS: {
+                  lat: snappedPosition?.lat ?? Number(rv.lat),
+                  lon: snappedPosition?.lon ?? Number(rv.lon),
+
+                  rawLat: Number(rv.lat),
+                  rawLon: Number(rv.lon),
+
+                  snappedToRoute: snappedPosition?.snappedToRoute || false,
+                  snapDistanceKm: snappedPosition?.snapDistanceKm ?? null,
+
+                  bearing: rv.bearing,
+                  speed: rv.speed,
+                  eta: rv.eta,
+                  horario: rv.horario || rv.updatedAt,
+                  updatedAt: rv.updatedAt || rv.horario,
+                  numero: rv.numero,
+                  line: rv.line,
+                  sentido: rv.sentido || null,
+                  operadora: getVehicleOperatorName(rv),
+                },
+                isLive: true,
+              };
+            }
+
+            return r.isLive ? r : { ...r, isLive: false };
+          });
 
           setRealtimeVehicles(nv);
           setRoutes(rebuiltRoutes);
