@@ -1,16 +1,18 @@
 // src/comp/TomTomMap.jsx
-// Mapa TomTom com marcadores SVG organizados
-// Corrigido: não reseta zoom, não bagunça marcadores, ônibus menor e paradas fixas
+// Mapa TomTom organizado:
+// - ônibus como marcador pequeno
+// - paradas como camada GeoJSON fixa no mapa
+// - não reseta zoom ao atualizar
 
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { TOMTOM_CONFIG } from '../config/busConfig';
+import { getAllSemobStops } from '../services/semobStops';
 
-import busMarkerIcon from '../assets/bus-stop-svgrepo-com.svg';
-import busStopMarkerIcon from '../assets/bus-transport-svgrepo-com.svg';
+const BUS_ICON_URL = '/assets/bus-marker.svg';
+const BUS_STOP_ICON_URL = '/assets/bus-stop-marker.svg';
 
-// ─── SDK singleton GLOBAL ─────────────────────────────
 const loadSDK = () => {
   if (window.__ttSdkPromise) return window.__ttSdkPromise;
 
@@ -43,43 +45,42 @@ const STYLES = {
 const lerp = (a, b, t) => a + (b - a) * t;
 const ALPHA = 0.15;
 
-const escapeHtml = (value) => String(value || '')
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#039;');
+const escapeHtml = (value) =>
+  String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 
-const getMarkerKey = (marker, index) => {
-  const type = marker.type || 'marker';
+const toStopsGeoJson = (stops = []) => ({
+  type: 'FeatureCollection',
+  features: stops
+    .filter((stop) => stop?.position?.lat && stop?.position?.lon)
+    .map((stop) => ({
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: [Number(stop.position.lon), Number(stop.position.lat)],
+      },
+      properties: {
+        id: stop.stopId || stop.id || '',
+        name: stop.name || stop.stopName || 'Parada de ônibus',
+        source: stop.source || 'SEMOB',
+      },
+    })),
+});
 
-  if (type === 'bus') {
-    const vehicle = marker.vehicleNumber || marker.numero || marker.id || '';
-    const line = marker.line || '';
-    const lat = Number(marker.lat || 0).toFixed(5);
-    const lon = Number(marker.lon || 0).toFixed(5);
+const loadImageForMap = (url) =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
 
-    // Se tiver número do veículo, usa ele como chave fixa.
-    // Se não tiver, usa linha + coordenada aproximada.
-    return vehicle
-      ? `bus_${line}_${vehicle}`
-      : `bus_${line}_${lat}_${lon}_${index}`;
-  }
-
-  if (type === 'stop') {
-    const lat = Number(marker.lat || 0).toFixed(6);
-    const lon = Number(marker.lon || 0).toFixed(6);
-    return `stop_${lat}_${lon}`;
-  }
-
-  return `${type}_${index}`;
-};
-
-const createMarkerElement = (marker) => {
-  const type = marker.type || 'bus';
-  const isBus = type === 'bus';
-  const isStop = type === 'stop';
-
+const createBusMarkerElement = (marker) => {
   const el = document.createElement('div');
 
   el.style.position = 'relative';
@@ -88,81 +89,44 @@ const createMarkerElement = (marker) => {
   el.style.justifyContent = 'center';
   el.style.cursor = 'pointer';
   el.style.pointerEvents = 'auto';
+  el.style.width = '26px';
+  el.style.height = '26px';
   el.style.transform = 'translateZ(0)';
   el.style.willChange = 'transform';
 
-  // Ônibus menor para não virar bagunça no mapa
-  el.style.width = isBus ? '28px' : '32px';
-  el.style.height = isBus ? '28px' : '32px';
-
   const img = document.createElement('img');
-  img.src = isStop ? busStopMarkerIcon : busMarkerIcon;
-  img.alt = isStop ? 'Parada de ônibus' : 'Ônibus';
+  img.src = BUS_ICON_URL;
+  img.alt = 'Ônibus';
   img.draggable = false;
-
-  img.style.position = 'relative';
+  img.style.width = '22px';
+  img.style.height = '22px';
   img.style.objectFit = 'contain';
-  img.style.zIndex = '2';
+  img.style.filter = 'drop-shadow(0 2px 5px rgba(0,0,0,0.55))';
 
-  img.style.width = isBus ? '24px' : '28px';
-  img.style.height = isBus ? '24px' : '28px';
-
-  img.style.filter = isBus
-    ? 'drop-shadow(0 2px 5px rgba(0, 0, 0, 0.55))'
-    : 'drop-shadow(0 2px 6px rgba(34, 197, 94, 0.45))';
-
-  if (isBus && Number.isFinite(Number(marker.bearing))) {
+  if (Number.isFinite(Number(marker.bearing))) {
     img.style.transform = `rotate(${Number(marker.bearing)}deg)`;
     img.style.transition = 'transform 0.25s ease';
   }
 
   el.appendChild(img);
 
-  // Badge pequeno da linha no ônibus
-  if (isBus && marker.line) {
+  if (marker.line) {
     const badge = document.createElement('div');
     badge.className = 'bus-line-badge';
     badge.textContent = marker.line;
 
     badge.style.position = 'absolute';
     badge.style.left = '50%';
-    badge.style.bottom = '-10px';
+    badge.style.bottom = '-9px';
     badge.style.transform = 'translateX(-50%)';
-    badge.style.zIndex = '3';
-
     badge.style.padding = '1px 5px';
     badge.style.borderRadius = '999px';
-    badge.style.background = 'rgba(0, 0, 0, 0.82)';
-    badge.style.color = '#ffffff';
+    badge.style.background = 'rgba(0,0,0,0.82)';
+    badge.style.color = '#fff';
     badge.style.fontSize = '8px';
     badge.style.fontWeight = '800';
     badge.style.lineHeight = '1';
     badge.style.whiteSpace = 'nowrap';
-    badge.style.boxShadow = '0 2px 6px rgba(0,0,0,0.35)';
-
-    el.appendChild(badge);
-  }
-
-  // Badge da parada
-  if (isStop) {
-    const badge = document.createElement('div');
-    badge.textContent = 'Parada';
-
-    badge.style.position = 'absolute';
-    badge.style.left = '50%';
-    badge.style.bottom = '-10px';
-    badge.style.transform = 'translateX(-50%)';
-    badge.style.zIndex = '3';
-
-    badge.style.padding = '1px 5px';
-    badge.style.borderRadius = '999px';
-    badge.style.background = 'rgba(22, 163, 74, 0.95)';
-    badge.style.color = '#ffffff';
-    badge.style.fontSize = '8px';
-    badge.style.fontWeight = '800';
-    badge.style.lineHeight = '1';
-    badge.style.whiteSpace = 'nowrap';
-    badge.style.boxShadow = '0 2px 6px rgba(0,0,0,0.35)';
 
     el.appendChild(badge);
   }
@@ -170,12 +134,12 @@ const createMarkerElement = (marker) => {
   return el;
 };
 
-const updateMarkerElement = (element, marker) => {
+const updateBusMarkerElement = (element, marker) => {
   if (!element) return;
 
   const img = element.querySelector('img');
 
-  if (img && marker.type === 'bus' && Number.isFinite(Number(marker.bearing))) {
+  if (img && Number.isFinite(Number(marker.bearing))) {
     img.style.transform = `rotate(${Number(marker.bearing)}deg)`;
   }
 
@@ -200,10 +164,8 @@ const TomTomMap = ({
   const smoothPosRef = useRef(null);
   const rafRef = useRef(null);
   const mountedRef = useRef(true);
-
-  // Aqui ficam os marcadores reais do TomTom.
-  // Não vamos recriar todos a cada atualização.
-  const markerStoreRef = useRef(new Map());
+  const busMarkersRef = useRef(new Map());
+  const stopPopupRef = useRef(null);
 
   const [mapLoaded, setMapLoaded] = useState(false);
   const [loadError, setLoadError] = useState(null);
@@ -213,41 +175,37 @@ const TomTomMap = ({
     smoothTransition: true,
   });
 
-  const cleanAllMarkers = useCallback(() => {
-    markerStoreRef.current.forEach((item) => {
+  const memoBusMarkers = useMemo(() => {
+    const unique = new Map();
+
+    (markers || [])
+      .filter((marker) => marker?.type === 'bus' && marker?.lat && marker?.lon)
+      .forEach((marker, index) => {
+        const key =
+          marker.id ||
+          marker.vehicleNumber ||
+          `${marker.line || 'bus'}_${index}_${Number(marker.lat).toFixed(5)}_${Number(marker.lon).toFixed(5)}`;
+
+        unique.set(key, {
+          ...marker,
+          __key: key,
+          lat: Number(marker.lat),
+          lon: Number(marker.lon),
+        });
+      });
+
+    return Array.from(unique.values());
+  }, [markers]);
+
+  const cleanBusMarkers = useCallback(() => {
+    busMarkersRef.current.forEach((item) => {
       try {
         item.marker.remove();
       } catch (_) {}
     });
 
-    markerStoreRef.current.clear();
+    busMarkersRef.current.clear();
   }, []);
-
-  const memoMarkers = useMemo(() => {
-    const list = (markers || [])
-      .filter((marker) => marker?.lat && marker?.lon)
-      .map((marker, index) => ({
-        ...marker,
-        lat: Number(marker.lat),
-        lon: Number(marker.lon),
-        __key: getMarkerKey(marker, index),
-      }));
-
-    // Remove paradas duplicadas
-    const unique = new Map();
-
-    list.forEach((marker) => {
-      unique.set(marker.__key, marker);
-    });
-
-    // Organização visual:
-    // Paradas primeiro, ônibus depois.
-    return Array.from(unique.values()).sort((a, b) => {
-      if (a.type === 'stop' && b.type !== 'stop') return -1;
-      if (a.type !== 'stop' && b.type === 'stop') return 1;
-      return 0;
-    });
-  }, [markers]);
 
   const drawRoute = useCallback((map, pts) => {
     const geo = {
@@ -258,13 +216,7 @@ const TomTomMap = ({
       },
     };
 
-    const safe = (fn) => {
-      try {
-        fn();
-      } catch (_) {}
-    };
-
-    safe(() => {
+    try {
       if (map.getSource('tt-route')) {
         map.getSource('tt-route').setData(geo);
         return;
@@ -320,10 +272,150 @@ const TomTomMap = ({
           'line-opacity': 0.6,
         },
       });
-    });
+    } catch (_) {}
   }, []);
 
-  // Inicializa o mapa só uma vez
+  const addStopsLayer = useCallback(async (map) => {
+    try {
+      const stops = await getAllSemobStops();
+      const stopsGeoJson = toStopsGeoJson(stops);
+
+      if (!map.getSource('semob-stops')) {
+        map.addSource('semob-stops', {
+          type: 'geojson',
+          data: stopsGeoJson,
+        });
+      } else {
+        map.getSource('semob-stops').setData(stopsGeoJson);
+      }
+
+      // Tenta usar o SVG da placa.
+      // Se o navegador/TomTom não aceitar SVG como image layer, cai no círculo.
+      try {
+        if (!map.hasImage?.('bus-stop-icon')) {
+          const stopIcon = await loadImageForMap(BUS_STOP_ICON_URL);
+          map.addImage('bus-stop-icon', stopIcon, { pixelRatio: 2 });
+        }
+
+        if (!map.getLayer('semob-stops-icons')) {
+          map.addLayer({
+            id: 'semob-stops-icons',
+            type: 'symbol',
+            source: 'semob-stops',
+            minzoom: 14,
+            layout: {
+              'icon-image': 'bus-stop-icon',
+              'icon-size': [
+                'interpolate',
+                ['linear'],
+                ['zoom'],
+                14,
+                0.025,
+                16,
+                0.04,
+                18,
+                0.06,
+              ],
+              'icon-allow-overlap': false,
+              'icon-ignore-placement': false,
+            },
+          });
+        }
+      } catch (_) {
+        if (!map.getLayer('semob-stops-circles')) {
+          map.addLayer({
+            id: 'semob-stops-circles',
+            type: 'circle',
+            source: 'semob-stops',
+            minzoom: 13,
+            paint: {
+              'circle-radius': [
+                'interpolate',
+                ['linear'],
+                ['zoom'],
+                13,
+                2,
+                16,
+                4,
+                18,
+                6,
+              ],
+              'circle-color': '#16a34a',
+              'circle-stroke-color': '#ffffff',
+              'circle-stroke-width': 1.2,
+              'circle-opacity': 0.9,
+            },
+          });
+        }
+      }
+
+      if (!map.getLayer('semob-stops-labels')) {
+        map.addLayer({
+          id: 'semob-stops-labels',
+          type: 'symbol',
+          source: 'semob-stops',
+          minzoom: 16,
+          layout: {
+            'text-field': ['get', 'name'],
+            'text-size': 10,
+            'text-offset': [0, 1.2],
+            'text-anchor': 'top',
+            'text-allow-overlap': false,
+          },
+          paint: {
+            'text-color': isDark ? '#e5e7eb' : '#111827',
+            'text-halo-color': isDark ? '#020617' : '#ffffff',
+            'text-halo-width': 1,
+          },
+        });
+      }
+
+      map.on('click', 'semob-stops-icons', (e) => {
+        const feature = e.features?.[0];
+        if (!feature) return;
+
+        const [lon, lat] = feature.geometry.coordinates;
+        const name = feature.properties?.name || 'Parada de ônibus';
+
+        if (stopPopupRef.current) {
+          stopPopupRef.current.remove();
+        }
+
+        stopPopupRef.current = new window.tt.Popup({ offset: 12 })
+          .setLngLat([lon, lat])
+          .setHTML(
+            `<div style="font-size:12px;font-weight:700;color:#111;">${escapeHtml(
+              name
+            )}</div>`
+          )
+          .addTo(map);
+      });
+
+      map.on('click', 'semob-stops-circles', (e) => {
+        const feature = e.features?.[0];
+        if (!feature) return;
+
+        const [lon, lat] = feature.geometry.coordinates;
+        const name = feature.properties?.name || 'Parada de ônibus';
+
+        if (stopPopupRef.current) {
+          stopPopupRef.current.remove();
+        }
+
+        stopPopupRef.current = new window.tt.Popup({ offset: 12 })
+          .setLngLat([lon, lat])
+          .setHTML(
+            `<div style="font-size:12px;font-weight:700;color:#111;">${escapeHtml(
+              name
+            )}</div>`
+          )
+          .addTo(map);
+      });
+    } catch (error) {
+      console.warn('[SEMOB stops layer] Falha ao carregar paradas:', error?.message || error);
+    }
+  }, [isDark]);
+
   useEffect(() => {
     mountedRef.current = true;
     let map = null;
@@ -337,9 +429,12 @@ const TomTomMap = ({
           container: mapElRef.current,
           center: center
             ? [center[0], center[1]]
-            : [TOMTOM_CONFIG.CENTRO_BRASILIA.lon, TOMTOM_CONFIG.CENTRO_BRASILIA.lat],
+            : [
+                TOMTOM_CONFIG.CENTRO_BRASILIA.lon,
+                TOMTOM_CONFIG.CENTRO_BRASILIA.lat,
+              ],
           zoom: 14,
-          pitch: 45,
+          pitch: 0,
           bearing: 0,
           style: isDark ? STYLES.dark : STYLES.light,
           language: 'pt-BR',
@@ -356,27 +451,14 @@ const TomTomMap = ({
           'bottom-right'
         );
 
-        map.on('load', () => {
+        map.on('load', async () => {
           if (!mountedRef.current) return;
-
-          try {
-            map.addLayer({
-              id: '3d-buildings',
-              type: 'fill-extrusion',
-              source: 'vectorTiles',
-              'source-layer': 'Building',
-              paint: {
-                'fill-extrusion-color': isDark ? '#1a1f35' : '#d4d8e0',
-                'fill-extrusion-height': ['get', 'height'],
-                'fill-extrusion-base': ['get', 'min_height'],
-                'fill-extrusion-opacity': 0.85,
-              },
-            });
-          } catch (_) {}
 
           if (showRoute && routePoints?.length) {
             drawRoute(map, routePoints);
           }
+
+          await addStopsLayer(map);
 
           setMapLoaded(true);
         });
@@ -391,7 +473,12 @@ const TomTomMap = ({
     return () => {
       mountedRef.current = false;
 
-      cleanAllMarkers();
+      cleanBusMarkers();
+
+      if (stopPopupRef.current) {
+        stopPopupRef.current.remove();
+        stopPopupRef.current = null;
+      }
 
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
@@ -409,7 +496,6 @@ const TomTomMap = ({
     };
   }, []);
 
-  // Atualiza tema sem mexer no zoom
   useEffect(() => {
     if (!mapLoaded || !mapRef.current) return;
 
@@ -418,86 +504,74 @@ const TomTomMap = ({
     } catch (_) {}
   }, [isDark, mapLoaded]);
 
-  // Atualiza rota
   useEffect(() => {
     if (!mapLoaded || !routePoints?.length || !mapRef.current) return;
     drawRoute(mapRef.current, routePoints);
   }, [routePoints, mapLoaded, drawRoute]);
 
-  // Atualiza marcadores sem resetar zoom/centro
   useEffect(() => {
     if (!mapLoaded || !mapRef.current || !window.tt) return;
 
-    const currentKeys = new Set(memoMarkers.map((marker) => marker.__key));
+    const map = mapRef.current;
+    const currentKeys = new Set(memoBusMarkers.map((marker) => marker.__key));
 
-    // Remove só o que sumiu
-    markerStoreRef.current.forEach((item, key) => {
+    busMarkersRef.current.forEach((item, key) => {
       if (!currentKeys.has(key)) {
         try {
           item.marker.remove();
         } catch (_) {}
 
-        markerStoreRef.current.delete(key);
+        busMarkersRef.current.delete(key);
       }
     });
 
-    // Cria ou atualiza os existentes
-    memoMarkers.forEach((marker) => {
-      const existing = markerStoreRef.current.get(marker.__key);
+    memoBusMarkers.forEach((marker) => {
+      const existing = busMarkersRef.current.get(marker.__key);
 
       if (existing) {
-        // Atualiza posição sem recriar marcador
         existing.marker.setLngLat([marker.lon, marker.lat]);
-        updateMarkerElement(existing.element, marker);
+        updateBusMarkerElement(existing.element, marker);
 
-        // Atualiza popup
         try {
-          const popupHtml = `
-            <div style="font-size:12px;font-weight:600;color:#111;line-height:1.35;max-width:220px;">
-              ${escapeHtml(marker.popup || '')}
-            </div>
-          `;
-
           existing.marker.setPopup(
-            new window.tt.Popup({ offset: 16 }).setHTML(popupHtml)
+            new window.tt.Popup({ offset: 12 }).setHTML(
+              `<div style="font-size:12px;font-weight:600;color:#111;line-height:1.35;max-width:220px;">
+                ${escapeHtml(marker.popup || '')}
+              </div>`
+            )
           );
         } catch (_) {}
 
         return;
       }
 
-      const element = createMarkerElement(marker);
-
-      const popupHtml = `
-        <div style="font-size:12px;font-weight:600;color:#111;line-height:1.35;max-width:220px;">
-          ${escapeHtml(marker.popup || '')}
-        </div>
-      `;
+      const element = createBusMarkerElement(marker);
 
       const ttMarker = new window.tt.Marker({
         element,
-        anchor: marker.type === 'stop' ? 'bottom' : 'center',
+        anchor: 'center',
       })
         .setLngLat([marker.lon, marker.lat])
         .setPopup(
-          new window.tt.Popup({
-            offset: marker.type === 'stop' ? 16 : 12,
-          }).setHTML(popupHtml)
+          new window.tt.Popup({ offset: 12 }).setHTML(
+            `<div style="font-size:12px;font-weight:600;color:#111;line-height:1.35;max-width:220px;">
+              ${escapeHtml(marker.popup || '')}
+            </div>`
+          )
         )
-        .addTo(mapRef.current);
+        .addTo(map);
 
-      markerStoreRef.current.set(marker.__key, {
+      busMarkersRef.current.set(marker.__key, {
         marker: ttMarker,
         element,
         data: marker,
       });
     });
 
-    // NÃO TEM easeTo AQUI.
-    // Isso impede o mapa de ficar tirando seu zoom toda vez que atualiza.
-  }, [memoMarkers, mapLoaded]);
+    // Importante: não tem easeTo aqui.
+    // Isso evita perder zoom quando atualiza.
+  }, [memoBusMarkers, mapLoaded]);
 
-  // Marcador do usuário
   useEffect(() => {
     if (!location || !mapLoaded || !mapRef.current || !window.tt) return;
 
@@ -580,18 +654,6 @@ const TomTomMap = ({
     rafRef.current = requestAnimationFrame(tick);
   }, [location, bearing, mapLoaded]);
 
-  // Só muda pitch quando abrir rota, não mexe em zoom
-  useEffect(() => {
-    if (!mapLoaded || !mapRef.current) return;
-
-    try {
-      mapRef.current.easeTo({
-        pitch: showRoute ? 45 : 0,
-        duration: 500,
-      });
-    } catch (_) {}
-  }, [showRoute, mapLoaded]);
-
   if (loadError) {
     return (
       <div className="w-full h-64 rounded-2xl bg-gray-900 flex items-center justify-center">
@@ -609,13 +671,7 @@ const TomTomMap = ({
           : '0 4px 24px rgba(0,0,0,0.1)',
       }}
     >
-      <div
-        ref={mapElRef}
-        className="w-full h-full"
-        style={{
-          willChange: 'transform',
-        }}
-      />
+      <div ref={mapElRef} className="w-full h-full" />
 
       {!mapLoaded && (
         <div className="absolute inset-0 bg-gray-900 animate-pulse rounded-2xl flex items-center justify-center">

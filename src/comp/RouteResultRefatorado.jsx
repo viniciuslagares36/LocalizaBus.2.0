@@ -413,31 +413,32 @@ const RouteResultRefatorado = ({ routes, origin, destination, loading, userLocat
       }))
   ), [processedRoutes]);
 
-  const stopMarkers = useMemo(() => (
+const liveMarkers = useMemo(
+  () =>
     processedRoutes
-      .filter(route => route.nearestStopLat && route.nearestStopLon)
-      .map(route => ({
-        lat: Number(route.nearestStopLat),
-        lon: Number(route.nearestStopLon),
-        type: 'stop',
-        popup: `Parada próxima: ${route.nearestStopName || route.fromStop || 'Parada de ônibus'}`,
-      }))
-      .filter((marker, index, arr) => {
-        const key = `${marker.lat.toFixed(6)}_${marker.lon.toFixed(6)}`;
-        return arr.findIndex(m => `${m.lat.toFixed(6)}_${m.lon.toFixed(6)}` === key) === index;
-      })
+      .filter((route) => route.realTimeGPS?.lat && route.realTimeGPS?.lon)
       .slice(0, 12)
-  ), [processedRoutes]);
-
-  const mapMarkers = useMemo(() => (
-    [...stopMarkers, ...liveMarkers]
-  ), [stopMarkers, liveMarkers]);
+      .map((route, index) => ({
+        id: route.realTimeGPS.numero
+          ? `bus_${route.line}_${route.realTimeGPS.numero}`
+          : `bus_${route.line}_${index}_${Number(route.realTimeGPS.lat).toFixed(5)}_${Number(route.realTimeGPS.lon).toFixed(5)}`,
+        lat: Number(route.realTimeGPS.lat),
+        lon: Number(route.realTimeGPS.lon),
+        type: 'bus',
+        line: route.line,
+        bearing: route.realTimeGPS.bearing ?? 0,
+        vehicleNumber: route.realTimeGPS.numero || '',
+        popup: `Linha ${route.line} • Veículo ${
+          route.realTimeGPS.numero || 'ao vivo'
+        } • ${Math.round(route.realTimeGPS.speed || 0)} km/h`,
+      })),
+  [processedRoutes]
+);
 
   const liveCenter = useMemo(() => {
-    const first = liveMarkers[0] || stopMarkers[0];
-    return first ? [first.lon, first.lat] : null;
-  }, [liveMarkers, stopMarkers]);
-
+  const first = liveMarkers[0];
+  return first ? [first.lon, first.lat] : null;
+}, [liveMarkers]);
   const handleWalkOpen = useCallback(route => setWalkRoute(route), []);
   const handleClose = useCallback(() => setWalkRoute(null), []);
 
@@ -520,7 +521,7 @@ const RouteResultRefatorado = ({ routes, origin, destination, loading, userLocat
           <div className="rounded-2xl overflow-hidden border border-cyan-400/20">
             <TomTomMap
               center={liveCenter}
-              markers={mapMarkers}
+              markers={liveMarkers}
               isDark={isDark}
             />
           </div>
