@@ -513,8 +513,8 @@ const RouteResultRefatorado = ({ routes, origin, destination, loading, userLocat
 
           <span
             className={`text-[10px] font-semibold ${hasLive
-                ? 'text-green-600 dark:text-green-400'
-                : 'text-gray-500 dark:text-gray-400'
+              ? 'text-green-600 dark:text-green-400'
+              : 'text-gray-500 dark:text-gray-400'
               }`}
           >
             {hasLive ? '🚀 GPS REAL — Veículos ao vivo' : 'Dados de horários — SEMOB/DFTrans'}
@@ -523,9 +523,10 @@ const RouteResultRefatorado = ({ routes, origin, destination, loading, userLocat
 
         {hasLive && liveCenter && (
           <div className="rounded-2xl overflow-hidden border border-cyan-400/20">
-            <TomTomMap
+            <LeafletMap
               center={liveCenter}
               markers={liveMarkers}
+              routes={processedRoutes}
               isDark={isDark}
             />
           </div>
