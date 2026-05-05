@@ -398,32 +398,58 @@ const RouteResultRefatorado = ({ routes, origin, destination, loading, userLocat
     () => processedRoutes.some(r => r.isLive),
     [processedRoutes]
   );
+const visibleBusRoutes = useMemo(() => {
+  return processedRoutes
+    .filter((route) => route.realTimeGPS?.lat && route.realTimeGPS?.lon)
+    .sort((a, b) => {
+      const etaA = Number(a.etaToNearestStopMinutes ?? a.time ?? 9999);
+      const etaB = Number(b.etaToNearestStopMinutes ?? b.time ?? 9999);
+
+      if (etaA !== etaB) return etaA - etaB;
+
+      const distA = Number(a.distance ?? 9999);
+      const distB = Number(b.distance ?? 9999);
+
+      return distA - distB;
+    })
+    .slice(0, 3);
+}, [processedRoutes]);
+
 const liveMarkers = useMemo(
   () =>
-    processedRoutes
-      .filter((route) => route.realTimeGPS?.lat && route.realTimeGPS?.lon)
-      .slice(0, 12)
-      .map((route, index) => ({
-        id: route.realTimeGPS.numero
-          ? `bus_${route.line}_${route.realTimeGPS.numero}`
-          : `bus_${route.line}_${index}_${Number(route.realTimeGPS.lat).toFixed(5)}_${Number(route.realTimeGPS.lon).toFixed(5)}`,
-        lat: Number(route.realTimeGPS.lat),
-        lon: Number(route.realTimeGPS.lon),
-        type: 'bus',
-        line: route.line,
-        bearing: route.realTimeGPS.bearing ?? 0,
-        vehicleNumber: route.realTimeGPS.numero || '',
-        popup: `Linha ${route.line} • Veículo ${
-          route.realTimeGPS.numero || 'ao vivo'
-        } • ${Math.round(route.realTimeGPS.speed || 0)} km/h`,
-      })),
-  [processedRoutes]
+    visibleBusRoutes.map((route, index) => ({
+      id: route.realTimeGPS.numero
+        ? `bus_${route.line}_${route.realTimeGPS.numero}`
+        : `bus_${route.line}_${index}_${Number(route.realTimeGPS.lat).toFixed(5)}_${Number(route.realTimeGPS.lon).toFixed(5)}`,
+      lat: Number(route.realTimeGPS.lat),
+      lon: Number(route.realTimeGPS.lon),
+      type: 'bus',
+      line: route.line,
+      bearing: route.realTimeGPS.bearing ?? 0,
+      vehicleNumber: route.realTimeGPS.numero || '',
+      popup: `Linha ${route.line} • Veículo ${
+        route.realTimeGPS.numero || 'ao vivo'
+      } • ${Math.round(route.realTimeGPS.speed || 0)} km/h`,
+    })),
+  [visibleBusRoutes]
 );
 
-  const liveCenter = useMemo(() => {
-  const first = liveMarkers[0];
-  return first ? [first.lon, first.lat] : null;
-}, [liveMarkers]);
+const liveCenter = useMemo(() => {
+  const routeWithStop = processedRoutes.find(
+    (route) => route.nearestStopLat && route.nearestStopLon
+  );
+
+  if (routeWithStop) {
+    return [
+      Number(routeWithStop.nearestStopLon),
+      Number(routeWithStop.nearestStopLat),
+    ];
+  }
+
+  const firstBus = liveMarkers[0];
+  return firstBus ? [firstBus.lon, firstBus.lat] : null;
+}, [processedRoutes, liveMarkers]);
+
   const handleWalkOpen = useCallback(route => setWalkRoute(route), []);
   const handleClose = useCallback(() => setWalkRoute(null), []);
 
