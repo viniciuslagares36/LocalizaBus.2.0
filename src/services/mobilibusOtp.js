@@ -1,6 +1,3 @@
-const MOBILIBUS_BASE =
-  'https://otp.mobilibus.com/FY7J-lwk85QGbn/otp/routers/default';
-
 export async function planMobilibusRoute({
   fromLat,
   fromLon,
@@ -26,7 +23,7 @@ export async function planMobilibusRoute({
     locale: 'pt_BR',
   });
 
-  const url = `${MOBILIBUS_BASE}/plan?${params.toString()}`;
+  const url = `/api/mobilibus-plan?${params.toString()}`;
 
   const response = await fetch(url, { signal });
 
