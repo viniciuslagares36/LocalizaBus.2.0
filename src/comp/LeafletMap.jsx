@@ -82,15 +82,34 @@ const getStopsFromRoutes = (routes = []) => {
   const map = new Map();
 
   routes.forEach((route) => {
+    const nearbyStops = Array.isArray(route.nearbyStops) ? route.nearbyStops : [];
+
+    nearbyStops.forEach((stop) => {
+      if (isValidCoord(stop.lat, stop.lon)) {
+        const key = `nearby_${stop.stopId || stop.id || stop.lat}_${stop.lon}`;
+
+        map.set(key, {
+          id: key,
+          name: stop.stopName || stop.name || 'Parada próxima',
+          lat: Number(stop.lat),
+          lon: Number(stop.lon),
+          line: route.line,
+          type: 'nearby',
+          distanceKm: stop.distanceKm ?? null,
+        });
+      }
+    });
+
     if (isValidCoord(route.nearestStopLat, route.nearestStopLon)) {
-      const key = `${route.nearestStopLat}_${route.nearestStopLon}`;
+      const key = `boarding_${route.nearestStopLat}_${route.nearestStopLon}`;
 
       map.set(key, {
         id: key,
-        name: route.nearestStopName || route.fromStop || 'Parada de ônibus',
+        name: route.nearestStopName || route.fromStop || 'Parada de embarque',
         lat: Number(route.nearestStopLat),
         lon: Number(route.nearestStopLon),
         line: route.line,
+        type: 'boarding',
       });
     }
   });
@@ -283,19 +302,29 @@ export default function LeafletMap({
           />
         ))}
 
-        {routeStops.map((stop) => (
-          <Marker
-            key={`stop_${stop.id}`}
-            position={[stop.lat, stop.lon]}
-            icon={stopIcon || fallbackStopIcon}
-          >
-            <Popup>
-              <strong>{stop.name}</strong>
-              <br />
-              Linha: {stop.line}
-            </Popup>
-          </Marker>
-        ))}
+{routeStops.map((stop) => {
+  const isBoarding = stop.type === 'boarding';
+
+  return (
+    <Marker
+      key={`stop_${stop.id}`}
+      position={[stop.lat, stop.lon]}
+      icon={isBoarding ? stopIcon : fallbackStopIcon}
+    >
+      <Popup>
+        <strong>{isBoarding ? 'Parada de embarque' : 'Parada próxima'}</strong>
+        <br />
+        {stop.name}
+        {stop.distanceKm != null ? (
+          <>
+            <br />
+            {Number(stop.distanceKm).toFixed(1)} km da origem
+          </>
+        ) : null}
+      </Popup>
+    </Marker>
+  );
+})}
 
         {visibleMarkers.map((marker, index) => (
           <Marker
