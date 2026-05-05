@@ -6,7 +6,7 @@ export async function planMobilibusRoute({
   date,
   time,
   mode = 'TRANSIT,WALK',
-  maxWalkDistance = 4828.032,
+  maxWalkDistance = 1200,
   signal,
 }) {
   const params = new URLSearchParams({
@@ -23,13 +23,24 @@ export async function planMobilibusRoute({
     locale: 'pt_BR',
   });
 
-  const url = `/api/mobilibus-plan?${params.toString()}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
 
-  const response = await fetch(url, { signal });
-
-  if (!response.ok) {
-    throw new Error(`Erro no planner Mobilibus: ${response.status}`);
+  if (signal) {
+    signal.addEventListener('abort', () => controller.abort(), { once: true });
   }
 
-  return response.json();
+  try {
+    const response = await fetch(`/api/mobilibus-plan?${params.toString()}`, {
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Erro no planner Mobilibus: ${response.status}`);
+    }
+
+    return response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
 }

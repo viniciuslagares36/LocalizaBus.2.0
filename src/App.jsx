@@ -302,7 +302,7 @@ const useRouteSearch = () => {
           date: getTodayOtpDate(),
           time: getNowOtpTime(),
           mode: 'TRANSIT,WALK',
-          maxWalkDistance: 4828.032,
+          maxWalkDistance: 1200,
           signal,
         });
 
