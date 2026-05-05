@@ -9,6 +9,7 @@ import axios from 'axios';
 import RouteResultRefatorado from './comp/RouteResultRefatorado';
 import { normalizeTransitlandItineraryMode } from './services/transitland';
 import { findLocalDfPlaces, getAllSemobStops } from './services/semobStops';
+import { planMobilibusRoute } from './services/mobilibusOtp';
 import {
   fetchDftransVehicles,
   getLiveVehiclesByLine,
@@ -229,13 +230,52 @@ const useRouteSearch = () => {
     }
   };
 
-  const getTransportPlan = async (origin, destination, signal, mode = 'bus') => {
-    // Para ônibus no DF, a Transitland não está roteando Brasília no plano atual.
-    // Usamos o GPS real do DFTrans para mostrar veículos ao vivo próximos da origem.
-    if (mode === 'bus') return [];
+  const getTodayOtpDate = () => {
+    const now = new Date();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const yyyy = now.getFullYear();
 
-    // Para metrô, mantemos fallback visual por estações/paradas até integrar fonte oficial do Metrô-DF.
-    if (mode === 'metro') return [];
+    return `${mm}-${dd}-${yyyy}`;
+  };
+
+  const getNowOtpTime = () => {
+    const now = new Date();
+    let hours = now.getHours();
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const suffix = hours >= 12 ? 'pm' : 'am';
+
+    hours = hours % 12;
+    if (hours === 0) hours = 12;
+
+    return `${hours}:${minutes}${suffix}`;
+  };
+
+  const getTransportPlan = async (origin, destination, signal, mode = 'bus') => {
+    if (mode === 'bus') {
+      try {
+        const data = await planMobilibusRoute({
+          fromLat: origin.lat,
+          fromLon: origin.lon,
+          toLat: destination.lat,
+          toLon: destination.lon,
+          date: getTodayOtpDate(),
+          time: getNowOtpTime(),
+          mode: 'TRANSIT,WALK',
+          maxWalkDistance: 4828.032,
+          signal,
+        });
+
+        return data?.plan?.itineraries || [];
+      } catch (error) {
+        console.warn('[Mobilibus OTP plan]', error?.message || error);
+        return [];
+      }
+    }
+
+    if (mode === 'metro') {
+      return [];
+    }
 
     if (mode === 'walk') {
       return getTomTomWalkingPlan(origin, destination, signal);
@@ -243,6 +283,7 @@ const useRouteSearch = () => {
 
     return [];
   };
+
 
   const calcDist = (p1, p2) => {
     const R = 6371, dLat = (p2.lat - p1.lat) * Math.PI / 180, dLon = (p2.lon - p1.lon) * Math.PI / 180;
