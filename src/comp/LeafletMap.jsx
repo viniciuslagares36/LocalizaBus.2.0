@@ -21,45 +21,45 @@ const createIcon = (url, size = 28, anchorY = 28) =>
     popupAnchor: [0, -anchorY],
   });
 
-const busIcon = createIcon(BUS_ICON_URL, 26, 26);
-const stopIcon = createIcon(BUS_STOP_ICON_URL, 22, 22);
+const busIcon = createIcon(BUS_ICON_URL, 20, 20);
+const stopIcon = createIcon(BUS_STOP_ICON_URL, 18, 18);
 
 const fallbackBusIcon = L.divIcon({
   className: '',
   html: `
     <div style="
-      width: 24px;
-      height: 24px;
+      width: 20px;
+      height: 20px;
       border-radius: 999px;
       background: #2563eb;
       color: white;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 13px;
+      font-size: 11px;
       font-weight: 900;
       border: 2px solid white;
       box-shadow: 0 4px 12px rgba(0,0,0,.35);
     ">🚌</div>
   `,
-  iconSize: [24, 24],
-  iconAnchor: [12, 12],
+  iconSize: [20, 20],
+  iconAnchor: [10, 10],
 });
 
 const fallbackStopIcon = L.divIcon({
   className: '',
   html: `
     <div style="
-      width: 14px;
-      height: 14px;
+      width: 12px;
+      height: 12px;
       border-radius: 999px;
       background: #16a34a;
       border: 2px solid white;
       box-shadow: 0 3px 8px rgba(0,0,0,.25);
     "></div>
   `,
-  iconSize: [14, 14],
-  iconAnchor: [7, 7],
+  iconSize: [12, 12],
+  iconAnchor: [6, 6],
 });
 
 const isValidCoord = (lat, lon) =>
@@ -149,7 +149,7 @@ export default function LeafletMap({
   markers = [],
   routes = [],
   userPosition = null,
-  height = 360,
+  height = 430,
   isDark = false,
 }) {
   const safeCenter = useMemo(() => {
@@ -211,11 +211,11 @@ export default function LeafletMap({
           width: '100%',
         }}
       >
-        <TileLayer
+<TileLayer
   attribution='&copy; OpenStreetMap contributors'
   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+  className={isDark ? 'leaflet-dark-tiles' : ''}
 />
-
 <MapController
   center={center}
   markers={visibleMarkers}

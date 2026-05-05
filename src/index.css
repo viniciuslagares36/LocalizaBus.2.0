@@ -109,3 +109,28 @@ body {
   background-color: rgba(0, 113, 227, 0.2);
   color: var(--text-primary);
 }
+.leaflet-dark-tiles {
+  filter: brightness(0.72) contrast(1.15) saturate(0.75) hue-rotate(180deg);
+}
+
+.leaflet-container {
+  font-family: inherit;
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: #0f172a;
+  color: #e5e7eb;
+  border-radius: 14px;
+}
+
+.leaflet-popup-content {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.leaflet-control-zoom a {
+  background: rgba(15, 23, 42, 0.92) !important;
+  color: #e5e7eb !important;
+  border-color: rgba(148, 163, 184, 0.25) !important;
+}
