@@ -398,21 +398,6 @@ const RouteResultRefatorado = ({ routes, origin, destination, loading, userLocat
     () => processedRoutes.some(r => r.isLive),
     [processedRoutes]
   );
-
-  const liveMarkers = useMemo(() => (
-    processedRoutes
-      .filter(route => route.realTimeGPS?.lat && route.realTimeGPS?.lon)
-      .slice(0, 10)
-      .map(route => ({
-        lat: Number(route.realTimeGPS.lat),
-        lon: Number(route.realTimeGPS.lon),
-        type: 'bus',
-        line: route.line,
-        bearing: route.realTimeGPS.bearing ?? 0,
-        popup: `Linha ${route.line} • Veículo ${route.realTimeGPS.numero || 'ao vivo'} • ${Math.round(route.realTimeGPS.speed || 0)} km/h`,
-      }))
-  ), [processedRoutes]);
-
 const liveMarkers = useMemo(
   () =>
     processedRoutes
