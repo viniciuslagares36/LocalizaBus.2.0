@@ -5,6 +5,7 @@ import {
   Marker,
   Popup,
   Polyline,
+  CircleMarker,
   useMap,
 } from 'react-leaflet';
 import L from 'leaflet';
@@ -97,7 +98,7 @@ const getStopsFromRoutes = (routes = []) => {
   return Array.from(map.values());
 };
 
-function MapController({ center, markers, routeLines }) {
+function MapController({ center, markers, routeLines, userPosition, boardingStop }) {
   const map = useMap();
   const didInitialFitRef = useRef(false);
 
@@ -108,6 +109,14 @@ function MapController({ center, markers, routeLines }) {
 
     if (center?.length === 2) {
       boundsPoints.push([Number(center[1]), Number(center[0])]);
+    }
+
+    if (userPosition && isValidCoord(userPosition.lat, userPosition.lon)) {
+      boundsPoints.push([Number(userPosition.lat), Number(userPosition.lon)]);
+    }
+
+    if (boardingStop && isValidCoord(boardingStop.lat, boardingStop.lon)) {
+      boundsPoints.push([Number(boardingStop.lat), Number(boardingStop.lon)]);
     }
 
     markers.forEach((marker) => {
@@ -130,7 +139,7 @@ function MapController({ center, markers, routeLines }) {
     }
 
     didInitialFitRef.current = true;
-  }, [center, markers, routeLines, map]);
+  }, [center, markers, routeLines, userPosition, boardingStop, map]);
 
   return null;
 }
@@ -139,6 +148,7 @@ export default function LeafletMap({
   center,
   markers = [],
   routes = [],
+  userPosition = null,
   height = 360,
   isDark = false,
 }) {
@@ -158,6 +168,20 @@ export default function LeafletMap({
 
   const routeLines = useMemo(() => getRoutePolylines(routes), [routes]);
   const routeStops = useMemo(() => getStopsFromRoutes(routes), [routes]);
+
+  const boardingStop = useMemo(() => {
+  const firstRouteWithStop = routes.find(
+    (route) => isValidCoord(route.nearestStopLat, route.nearestStopLon)
+  );
+
+  if (!firstRouteWithStop) return null;
+
+  return {
+    lat: Number(firstRouteWithStop.nearestStopLat),
+    lon: Number(firstRouteWithStop.nearestStopLon),
+    name: firstRouteWithStop.nearestStopName || firstRouteWithStop.fromStop || 'Parada de embarque',
+  };
+}, [routes]);
 
   const visibleMarkers = useMemo(
     () =>
@@ -188,15 +212,65 @@ export default function LeafletMap({
         }}
       >
         <TileLayer
-          attribution='&copy; OpenStreetMap contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+  attribution='&copy; OpenStreetMap contributors'
+  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+/>
 
-        <MapController
-          center={center}
-          markers={visibleMarkers}
-          routeLines={routeLines}
-        />
+<MapController
+  center={center}
+  markers={visibleMarkers}
+  routeLines={routeLines}
+  userPosition={userPosition}
+  boardingStop={boardingStop}
+/>
+       {userPosition && isValidCoord(userPosition.lat, userPosition.lon) && (
+  <>
+    <CircleMarker
+      center={[Number(userPosition.lat), Number(userPosition.lon)]}
+      radius={16}
+      pathOptions={{
+        color: '#22d3ee',
+        fillColor: '#22d3ee',
+        fillOpacity: 0.18,
+        weight: 2,
+        opacity: 0.85,
+      }}
+    />
+    <CircleMarker
+      center={[Number(userPosition.lat), Number(userPosition.lon)]}
+      radius={8}
+      pathOptions={{
+        color: '#ffffff',
+        fillColor: '#00e5ff',
+        fillOpacity: 1,
+        weight: 3,
+        opacity: 1,
+      }}
+    >
+      <Popup>
+        <strong>Você está aqui</strong>
+      </Popup>
+    </CircleMarker>
+  </>
+)}
+
+{userPosition &&
+ boardingStop &&
+ isValidCoord(userPosition.lat, userPosition.lon) &&
+ isValidCoord(boardingStop.lat, boardingStop.lon) && (
+  <Polyline
+    positions={[
+      [Number(userPosition.lat), Number(userPosition.lon)],
+      [Number(boardingStop.lat), Number(boardingStop.lon)],
+    ]}
+    pathOptions={{
+      color: '#00e5ff',
+      weight: 4,
+      opacity: 0.95,
+      dashArray: '10 8',
+    }}
+  />
+)}
 
         {routeLines.map((route) => (
           <Polyline

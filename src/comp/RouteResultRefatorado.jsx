@@ -397,6 +397,18 @@ const RouteResultRefatorado = ({ routes, origin, destination, loading, userLocat
     () => processedRoutes.some(r => r.isLive),
     [processedRoutes]
   );
+  const userPosition = useMemo(() => {
+  const origin = window.__lastOriginCoords;
+
+  if (origin?.lat && origin?.lon) {
+    return {
+      lat: Number(origin.lat),
+      lon: Number(origin.lon),
+    };
+  }
+
+  return null;
+}, [processedRoutes]);
   const visibleBusRoutes = useMemo(() => {
     return processedRoutes
       .filter((route) => route.realTimeGPS?.lat && route.realTimeGPS?.lon)
@@ -521,16 +533,17 @@ const RouteResultRefatorado = ({ routes, origin, destination, loading, userLocat
           </span>
         </div>
 
-        {hasLive && liveCenter && (
-          <div className="rounded-2xl overflow-hidden border border-cyan-400/20">
-            <LeafletMap
-              center={liveCenter}
-              markers={liveMarkers}
-              routes={processedRoutes}
-              isDark={isDark}
-            />
-          </div>
-        )}
+{hasLive && liveCenter && (
+  <div className="rounded-2xl overflow-hidden border border-cyan-400/20">
+    <LeafletMap
+      center={liveCenter}
+      markers={liveMarkers}
+      routes={processedRoutes}
+      userPosition={userPosition}
+      isDark={isDark}
+    />
+  </div>
+)}
 
         {/* Cards */}
         <div className="space-y-2.5">
