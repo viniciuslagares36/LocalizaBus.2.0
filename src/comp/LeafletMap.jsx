@@ -412,7 +412,6 @@ export default function LeafletMap({
   );
 })}
 {visibleMarkers.map((marker, index) => (
-{visibleMarkers.map((marker, index) => (
   <Marker
     key={marker.id || `bus_${index}`}
     position={[Number(marker.lat), Number(marker.lon)]}
