@@ -236,7 +236,7 @@ const SkeletonCard = memo(() => (
 ));
 
 // ─── Card de rota individual ─────────────────────────────────────────────────
-const RouteCard = memo(({ route, idx, onWalkOpen }) => {
+const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCount = 1 }) => {
   const cardClass = useMemo(() => {
     if (route.isWalk) return 'border-cyan-300/50 bg-cyan-50/20 dark:border-cyan-800/40 dark:bg-cyan-900/10';
     if (route.isLive) return 'border-green-300/60 bg-green-50/30 dark:border-green-800/50 dark:bg-green-900/10';
@@ -297,6 +297,20 @@ const RouteCard = memo(({ route, idx, onWalkOpen }) => {
 <div className="flex items-center gap-2 flex-wrap mb-1.5">
   <LineNumberBadge route={route} />
 
+  {route.isLive && route.realTimeGPS?.numero ? (
+  <div className="flex items-center gap-2 flex-wrap mb-1.5">
+    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-700/70 text-slate-100 border border-slate-500/30">
+      Veículo {route.realTimeGPS.numero}
+    </span>
+
+    {sameLineVehicleCount > 1 ? (
+      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-400/30">
+        {sameLineVehicleCount} veículos nessa linha
+      </span>
+    ) : null}
+  </div>
+) : null}
+
   <span className="font-semibold text-sm text-gray-900 dark:text-white tracking-tight">
     {route.isWalk
       ? 'Rota a pé'
@@ -328,28 +342,6 @@ const RouteCard = memo(({ route, idx, onWalkOpen }) => {
                 </span>
               )}
 
-              {!route.isWalk && route.caminhadaInfo && (
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={handleWalkOpen}
-                  className="flex items-center gap-1 px-2 py-0.5 rounded-full"
-                  style={{
-                    background: 'rgba(0,243,255,0.07)',
-                    border: '1px solid rgba(0,243,255,0.28)',
-                    boxShadow: '0 0 8px rgba(0,243,255,0.08)',
-                  }}
-                  title="Ver rota a pé no mapa"
-                >
-                  <Footprints className="h-3 w-3 text-cyan-400" strokeWidth={1.5} />
-                  <span className="text-xs font-semibold text-cyan-400">
-                    {route.caminhadaInfo.distancia}km • {route.caminhadaInfo.tempo}min
-                  </span>
-                  <span className="text-[9px] text-cyan-300 hidden sm:inline ml-0.5">
-                    ver mapa
-                  </span>
-                </motion.button>
-              )}
             </div>
 
             {/* Ponto de embarque / instrução */}
@@ -431,14 +423,20 @@ const RouteCard = memo(({ route, idx, onWalkOpen }) => {
                 </motion.button>
               )}
 
-              <motion.button
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.95 }}
-                className={`rounded-full px-4 py-1.5 text-xs font-semibold text-white ${route.isLive ? 'bg-green-600' : 'bg-blue-500'
-                  }`}
-              >
-                {route.isLive ? 'Ver mapa' : 'Detalhes'}
-              </motion.button>
+<motion.button
+  whileHover={{ scale: 1.04 }}
+  whileTap={{ scale: 0.95 }}
+  onClick={() => {
+    if (route.isLive) {
+      onFocusMap?.(route.id);
+    }
+  }}
+  className={`rounded-full px-4 py-1.5 text-xs font-semibold text-white ${
+    route.isLive ? 'bg-green-600' : 'bg-blue-500'
+  }`}
+>
+  {route.isLive ? 'Ver mapa' : 'Detalhes'}
+</motion.button>
             </>
           )}
         </div>
@@ -450,11 +448,13 @@ const RouteCard = memo(({ route, idx, onWalkOpen }) => {
 // ─── Componente principal ────────────────────────────────────────────────────
 const RouteResultRefatorado = ({ routes, origin, destination, loading, userLocation, isDark }) => {
   const [walkRoute, setWalkRoute] = useState(null);
+  const [selectedRouteId, setSelectedRouteId] = useState(null);
 
-  const processedRoutes = useMemo(() => {
-    if (!routes?.length) return [];
+const processedRoutes = useMemo(() => {
+  if (!routes?.length) return [];
 
-    return routes.map(route => {
+  return routes
+    .map(route => {
       const bacia = identificarBacia(route.line, route.mode);
 
       let caminhadaInfo = null;
@@ -478,8 +478,19 @@ const RouteResultRefatorado = ({ routes, origin, destination, loading, userLocat
         bacia: route.isWalk ? null : bacia,
         caminhadaInfo,
       };
+    })
+    .sort((a, b) => {
+      const etaA = Number(a.etaToNearestStopMinutes ?? a.time ?? 9999);
+      const etaB = Number(b.etaToNearestStopMinutes ?? b.time ?? 9999);
+
+      if (etaA !== etaB) return etaA - etaB;
+
+      const lineA = String(a.line || '');
+      const lineB = String(b.line || '');
+
+      return lineA.localeCompare(lineB);
     });
-  }, [routes, userLocation]);
+}, [routes, userLocation]);
 
   const hasLive = useMemo(
     () => processedRoutes.some(r => r.isLive),
@@ -514,11 +525,40 @@ const RouteResultRefatorado = ({ routes, origin, destination, loading, userLocat
       .slice(0, 5);
   }, [processedRoutes]);
 
+  const lineVehicleCount = useMemo(() => {
+  const map = new Map();
+
+  processedRoutes.forEach((route) => {
+    const line = String(route.line || '').trim();
+    if (!line) return;
+
+    const current = map.get(line) || new Set();
+
+    const vehicleNumber =
+      route.realTimeGPS?.numero ||
+      route.vehicleNumber ||
+      route.id;
+
+    current.add(String(vehicleNumber));
+
+    map.set(line, current);
+  });
+
+  const result = new Map();
+
+  map.forEach((set, line) => {
+    result.set(line, set.size);
+  });
+
+  return result;
+}, [processedRoutes]);
+
 const liveMarkers = useMemo(
   () =>
     visibleBusRoutes.map((route, index) => ({
       id: `bus_${route.id || index}_${route.line}_${route.realTimeGPS.numero || index}`,
       routeId: route.id,
+
       lat: Number(route.realTimeGPS.lat),
       lon: Number(route.realTimeGPS.lon),
       type: 'bus',
@@ -649,13 +689,14 @@ const liveMarkers = useMemo(
 
 {hasLive && liveCenter && (
   <div className="rounded-2xl overflow-hidden border border-cyan-400/20">
-    <LeafletMap
-      center={liveCenter}
-      markers={liveMarkers}
-      routes={processedRoutes}
-      userPosition={userPosition}
-      isDark={isDark}
-    />
+<LeafletMap
+  center={liveCenter}
+  markers={liveMarkers}
+  routes={processedRoutes}
+  userPosition={userPosition}
+  selectedRouteId={selectedRouteId}
+  isDark={isDark}
+/>
   </div>
 )}
 
@@ -663,12 +704,14 @@ const liveMarkers = useMemo(
         <div className="space-y-2.5">
           <AnimatePresence>
             {processedRoutes.map((route, idx) => (
-              <RouteCard
-                key={route.id}
-                route={route}
-                idx={idx}
-                onWalkOpen={handleWalkOpen}
-              />
+<RouteCard
+  key={route.id}
+  route={route}
+  idx={idx}
+  onWalkOpen={handleWalkOpen}
+  onFocusMap={setSelectedRouteId}
+  sameLineVehicleCount={lineVehicleCount.get(String(route.line || '').trim()) || 1}
+/>
             ))}
           </AnimatePresence>
         </div>

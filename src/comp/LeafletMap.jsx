@@ -231,11 +231,44 @@ const formatGpsUpdatedAt = (timestamp, now = Date.now()) => {
 
   return `Atualizado há ${minutes} min`;
 };
+function FollowSelectedBus({ markers, selectedRouteId }) {
+  const map = useMap();
+  const lastPositionRef = useRef(null);
+
+  useEffect(() => {
+    if (!selectedRouteId) return;
+
+    const selected = markers.find((marker) => marker.routeId === selectedRouteId);
+
+    if (!selected || !isValidCoord(selected.lat, selected.lon)) return;
+
+    const nextPosition = [Number(selected.lat), Number(selected.lon)];
+    const lastPosition = lastPositionRef.current;
+
+    const changed =
+      !lastPosition ||
+      lastPosition[0] !== nextPosition[0] ||
+      lastPosition[1] !== nextPosition[1];
+
+    if (!changed) return;
+
+    lastPositionRef.current = nextPosition;
+
+    map.flyTo(nextPosition, Math.max(map.getZoom(), 16), {
+      animate: true,
+      duration: 0.7,
+    });
+  }, [markers, selectedRouteId, map]);
+
+  return null;
+}
+
 export default function LeafletMap({
   center,
   markers = [],
   routes = [],
   userPosition = null,
+  selectedRouteId = null,
   height = 430,
   isDark = false,
 }) {
@@ -320,6 +353,11 @@ export default function LeafletMap({
   userPosition={userPosition}
   boardingStop={boardingStop}
 />
+
+<FollowSelectedBus
+  markers={visibleMarkers}
+  selectedRouteId={selectedRouteId}
+/>
        {userPosition && isValidCoord(userPosition.lat, userPosition.lon) && (
   <>
     <CircleMarker
@@ -345,7 +383,9 @@ export default function LeafletMap({
       }}
     >
       <Popup>
-        <strong>Você está aqui</strong>
+        <strong>Origem da busca</strong>
+ <br />
+Caminhe até a parada destacada<strong>Você está aqui</strong>
       </Popup>
     </CircleMarker>
   </>
@@ -456,73 +496,90 @@ export default function LeafletMap({
 })}
 {visibleMarkers.map((marker, index) => {
   const gpsUpdatedText = formatGpsUpdatedAt(marker.gpsTimestamp, now);
+  const isSelected = marker.routeId === selectedRouteId;
+  const markerKey = marker.id || `bus_${index}`;
 
   return (
-    <Marker
-      key={marker.id || `bus_${index}`}
-      position={[Number(marker.lat), Number(marker.lon)]}
-      icon={busIcon || fallbackBusIcon}
-    >
-      <Popup>
-        <div style={{ minWidth: 230 }}>
-          <strong>Linha {marker.line || 'ônibus'}</strong>
+    <React.Fragment key={`bus_group_${markerKey}`}>
+      {isSelected ? (
+        <CircleMarker
+          center={[Number(marker.lat), Number(marker.lon)]}
+          radius={18}
+          pathOptions={{
+            color: '#00e5ff',
+            fillColor: '#00e5ff',
+            fillOpacity: 0.16,
+            weight: 3,
+            opacity: 0.95,
+          }}
+        />
+      ) : null}
 
-          <br />
+      <Marker
+        position={[Number(marker.lat), Number(marker.lon)]}
+        icon={busIcon || fallbackBusIcon}
+      >
+        <Popup>
+          <div style={{ minWidth: 230 }}>
+            <strong>Linha {marker.line || 'ônibus'}</strong>
 
-          {marker.itinerary ? (
-            <span>{marker.itinerary}</span>
-          ) : (
-            <span>
-              {marker.fromStop || 'Origem'} → {marker.toStop || 'Destino'}
-            </span>
-          )}
+            <br />
 
-          <div style={{ marginTop: 10 }}>
-            {marker.vehicleNumber ? (
-              <>
-                <strong>Veículo:</strong> {marker.vehicleNumber}
-                <br />
-              </>
-            ) : null}
+            {marker.itinerary ? (
+              <span>{marker.itinerary}</span>
+            ) : (
+              <span>
+                {marker.fromStop || 'Origem'} → {marker.toStop || 'Destino'}
+              </span>
+            )}
 
-            {marker.etaMinutes != null ? (
-              <>
-                <strong>Passa na parada em:</strong>{' '}
-                {Number(marker.etaMinutes) <= 1 ? 'AGORA' : `${marker.etaMinutes} min`}
-                <br />
-              </>
-            ) : null}
+            <div style={{ marginTop: 10 }}>
+              {marker.vehicleNumber ? (
+                <>
+                  <strong>Veículo:</strong> {marker.vehicleNumber}
+                  <br />
+                </>
+              ) : null}
 
-            {marker.sentido ? (
-              <>
-                <strong>Sentido:</strong> {marker.sentido}
-                <br />
-              </>
-            ) : null}
+              {marker.etaMinutes != null ? (
+                <>
+                  <strong>Passa na parada em:</strong>{' '}
+                  {Number(marker.etaMinutes) <= 1 ? 'AGORA' : `${marker.etaMinutes} min`}
+                  <br />
+                </>
+              ) : null}
 
-            <strong>Velocidade:</strong> {Math.round(marker.speed || 0)} km/h
+              {marker.sentido ? (
+                <>
+                  <strong>Sentido:</strong> {marker.sentido}
+                  <br />
+                </>
+              ) : null}
 
-            {gpsUpdatedText ? (
-              <>
-                <br />
-                <span style={{ opacity: 0.78 }}>
-                  {gpsUpdatedText}
-                </span>
-              </>
-            ) : null}
+              <strong>Velocidade:</strong> {Math.round(marker.speed || 0)} km/h
 
-            {marker.isGpsOnly ? (
-              <>
-                <br />
-                <span style={{ opacity: 0.72 }}>
-                  Previsão estimada por GPS
-                </span>
-              </>
-            ) : null}
+              {gpsUpdatedText ? (
+                <>
+                  <br />
+                  <span style={{ opacity: 0.78 }}>
+                    {gpsUpdatedText}
+                  </span>
+                </>
+              ) : null}
+
+              {marker.isGpsOnly ? (
+                <>
+                  <br />
+                  <span style={{ opacity: 0.72 }}>
+                    Previsão estimada por GPS
+                  </span>
+                </>
+              ) : null}
+            </div>
           </div>
-        </div>
-      </Popup>
-    </Marker>
+        </Popup>
+      </Marker>
+    </React.Fragment>
   );
 })}
       </MapContainer>
