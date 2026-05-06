@@ -458,7 +458,7 @@ const RouteResultRefatorado = ({ routes, origin, destination, loading, userLocat
 const processedRoutes = useMemo(() => {
   if (!routes?.length) return [];
 
-  return routes
+  const mapped = routes
     .map(route => {
       const bacia = identificarBacia(route.line, route.mode);
 
@@ -495,6 +495,51 @@ const processedRoutes = useMemo(() => {
 
       return lineA.localeCompare(lineB);
     });
+
+  const unique = new Map();
+
+  mapped.forEach((route) => {
+    const line = String(route.line || '').trim();
+    const vehicleNumber =
+      route.realTimeGPS?.numero ||
+      route.vehicleNumber ||
+      null;
+
+    // Se tiver GPS ao vivo, a identidade real é linha + número do veículo.
+    // Assim o mesmo ônibus não aparece duplicado.
+    const key =
+      route.isLive && vehicleNumber
+        ? `live_${line}_${vehicleNumber}`
+        : `route_${route.id}`;
+
+    const current = unique.get(key);
+
+    if (!current) {
+      unique.set(key, route);
+      return;
+    }
+
+    const currentEta = Number(current.etaToNearestStopMinutes ?? current.time ?? 9999);
+    const nextEta = Number(route.etaToNearestStopMinutes ?? route.time ?? 9999);
+
+    // Se por algum motivo o mesmo veículo apareceu em duas rotas,
+    // mantém a rota com menor tempo até a parada.
+    if (nextEta < currentEta) {
+      unique.set(key, route);
+    }
+  });
+
+  return Array.from(unique.values()).sort((a, b) => {
+    const etaA = Number(a.etaToNearestStopMinutes ?? a.time ?? 9999);
+    const etaB = Number(b.etaToNearestStopMinutes ?? b.time ?? 9999);
+
+    if (etaA !== etaB) return etaA - etaB;
+
+    const lineA = String(a.line || '');
+    const lineB = String(b.line || '');
+
+    return lineA.localeCompare(lineB);
+  });
 }, [routes, userLocation]);
 
   const hasLive = useMemo(
