@@ -1546,10 +1546,14 @@ function App() {
         </motion.div>
       </div>
 
-      <footer className="pb-8 text-center text-[10px] text-[var(--text-tertiary)]">
-        Dados de transporte: DFTrans/SEMOB • <a href="https://www.transit.land/" target="_blank" rel="noreferrer" className="underline hover:text-[var(--accent)]">Transitland</a>
-        {' '}• Mapas e busca: TomTom
-      </footer>
+<footer className="pb-8 text-center">
+  <p className="text-[11px] font-semibold tracking-wide text-[var(--text-tertiary)]">
+    LocalizaBus — Mobilidade urbana inteligente
+  </p>
+  <p className="mt-1 text-[10px] text-[var(--text-tertiary)]/70">
+    Transporte público do Distrito Federal em tempo real
+  </p>
+</footer>
     </div>
   );
 }

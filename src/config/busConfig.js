@@ -75,22 +75,90 @@ export const BACIA_FALLBACK = {
 // [TASK 3] Retorna BACIA_FALLBACK quando nenhuma bacia corresponde ao código.
 export const identificarBacia = (codigoLinha, modo) => {
   const modoStr = String(modo || '').toUpperCase();
+  const raw = String(codigoLinha || '').trim();
 
-  if (modoStr.includes('RAIL') || modoStr.includes('METRO') || modoStr.toLowerCase().includes('metro')) {
-    return (
-      Object.values(BACIA_CORES).find(
-        (bacia) => bacia.tipo === 'metro' && bacia.codigosLinha.includes(codigoLinha)
-      ) ?? BACIA_FALLBACK
+  if (
+    modoStr.includes('RAIL') ||
+    modoStr.includes('METRO') ||
+    modoStr.toLowerCase().includes('metro')
+  ) {
+    const metroMatch = Object.values(BACIA_CORES).find(
+      (bacia) =>
+        bacia.tipo === 'metro' &&
+        bacia.codigosLinha.some((codigo) =>
+          raw.toLowerCase().includes(String(codigo).toLowerCase())
+        )
     );
+
+    return metroMatch ?? BACIA_FALLBACK;
   }
 
-  return (
-    Object.values(BACIA_CORES).find(
-      (bacia) =>
-        bacia.tipo === 'onibus' &&
-        bacia.codigosLinha.some((codigo) => String(codigoLinha || '').includes(codigo))
-    ) ?? BACIA_FALLBACK
-  );
+  const normalized = raw
+    .replace(/linha/gi, '')
+    .replace(/[^0-9.]/g, '')
+    .replace(/^0+/, '');
+
+  const mainNumber = Number(normalized.split('.')[0]);
+
+  if (Number.isFinite(mainNumber)) {
+    if (mainNumber >= 100 && mainNumber < 200) {
+      return {
+        nome: 'Bacia Norte',
+        cor: '#0a84ff',
+        tipo: 'onibus',
+      };
+    }
+
+    if (mainNumber >= 200 && mainNumber < 300) {
+      return {
+        nome: 'Bacia Sul',
+        cor: '#30d158',
+        tipo: 'onibus',
+      };
+    }
+
+    if (mainNumber >= 300 && mainNumber < 400) {
+      return {
+        nome: 'Bacia Leste',
+        cor: '#ff9f0a',
+        tipo: 'onibus',
+      };
+    }
+
+    if (mainNumber >= 400 && mainNumber < 500) {
+      return {
+        nome: 'São José',
+        cor: '#a8875b',
+        tipo: 'onibus',
+      };
+    }
+
+    if (mainNumber >= 500 && mainNumber < 600) {
+      return {
+        nome: 'Bacia Oeste',
+        cor: '#bf5af2',
+        tipo: 'onibus',
+      };
+    }
+
+    if (mainNumber >= 600 && mainNumber < 900) {
+      return {
+        nome: 'Central/Expresso',
+        cor: '#ff375f',
+        tipo: 'onibus',
+      };
+    }
+
+    if (mainNumber < 100) {
+      return {
+        nome: 'Circular/Local',
+        cor: '#64748b',
+        tipo: 'onibus',
+      };
+    }
+  }
+
+  return BACIA_FALLBACK;
 };
 
 // ─── UTILS DE GEOLOCALIZAÇÃO ──────────────────────────────────────────────────

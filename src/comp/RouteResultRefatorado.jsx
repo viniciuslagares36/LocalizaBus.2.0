@@ -13,6 +13,67 @@ import { calcularDistancia, calcularTempoCaminhada, identificarBacia } from '../
 // ─── Constantes fora do componente ───────────────────────────────────────────
 const SPRING = { type: 'spring', stiffness: 120, damping: 22 };
 
+const getReadableTextColor = (hexColor) => {
+  const hex = String(hexColor || '').replace('#', '');
+
+  if (hex.length !== 6) return '#ffffff';
+
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+
+  return brightness > 155 ? '#111827' : '#ffffff';
+};
+
+const getLineBadgeStyle = (route) => {
+  const bg =
+    route.routeColor ||
+    route.color ||
+    route.bacia?.cor ||
+    '#64748b';
+
+  const color =
+    route.routeTextColor ||
+    route.textColor ||
+    getReadableTextColor(bg);
+
+  return {
+    background: bg,
+    color,
+    border: `1px solid ${bg}`,
+    boxShadow: `0 4px 12px ${bg}30`,
+  };
+};
+
+const LineNumberBadge = memo(({ route }) => {
+  if (route.isWalk) {
+    return (
+      <span
+        className="text-[10px] font-extrabold px-2 py-1 rounded-lg"
+        style={{
+          background: 'rgba(0,243,255,0.12)',
+          color: '#00f3ff',
+          border: '1px solid rgba(0,243,255,0.28)',
+        }}
+      >
+        A pé
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="inline-flex items-center justify-center min-w-[3.1rem] px-2.5 py-1 rounded-lg text-[11px] font-black tracking-tight shrink-0"
+      style={getLineBadgeStyle(route)}
+      title={route.bacia?.nome || 'Linha de ônibus'}
+    >
+      {route.line || '—'}
+    </span>
+  );
+});
+
 // ─── Badge GPS ao vivo ───────────────────────────────────────────────────────
 const getGpsUpdateMinutes = (route) => {
   const timestamp =
@@ -191,30 +252,15 @@ const RouteCard = memo(({ route, idx, onWalkOpen }) => {
 
           <div className="flex-1 min-w-0">
             {/* Badge + nome */}
-            <div className="flex items-center gap-2 flex-wrap mb-1.5">
-              {route.isWalk ? (
-                <span
-                  className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                  style={{ background: 'rgba(0,243,255,0.1)', color: '#00f3ff' }}
-                >
-                  Caminhada
-                </span>
-              ) : route.bacia ? (
-                <span
-                  className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                  style={{
-                    background: `${route.bacia.cor}18`,
-                    color: route.bacia.cor,
-                  }}
-                >
-                  {route.bacia.nome}
-                </span>
-              ) : null}
+<div className="flex items-center gap-2 flex-wrap mb-1.5">
+  <LineNumberBadge route={route} />
 
-              <span className="font-semibold text-sm text-gray-900 dark:text-white tracking-tight">
-                {route.isWalk ? 'Rota a pé' : `Linha ${route.line}`}
-              </span>
-            </div>
+  <span className="font-semibold text-sm text-gray-900 dark:text-white tracking-tight">
+    {route.isWalk
+      ? 'Rota a pé'
+      : route.bacia?.nome || 'Ônibus'}
+  </span>
+</div>
 
             {/* Métricas */}
             <div className="flex items-center gap-3 flex-wrap">
