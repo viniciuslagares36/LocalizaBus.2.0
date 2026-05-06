@@ -538,9 +538,11 @@ const liveMarkers = useMemo(
         route.time ??
         null,
 
-      gpsUpdatedMinutes:
-        route.gpsUpdatedMinutes ??
-        route.realTimeGPS?.gpsUpdatedMinutes ??
+      gpsTimestamp:
+        route.realTimeGPS?.updatedAt ||
+        route.realTimeGPS?.horario ||
+        route.updatedAt ||
+        route.horario ||
         null,
 
       isGpsOnly: route.isGpsOnly || false,

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   MapContainer,
   TileLayer,
@@ -200,7 +200,37 @@ function MapController({ center, markers, routeLines, userPosition, boardingStop
 
   return null;
 }
+const formatGpsUpdatedAt = (timestamp, now = Date.now()) => {
+  if (!timestamp) return null;
 
+  const gpsTime = Number(timestamp);
+
+  if (!Number.isFinite(gpsTime)) return null;
+
+  const diffMs = now - gpsTime;
+
+  if (diffMs < 0) {
+    return 'Atualizado agora';
+  }
+
+  const seconds = Math.floor(diffMs / 1000);
+
+  if (seconds <= 5) {
+    return 'Atualizado agora';
+  }
+
+  if (seconds < 60) {
+    return `Atualizado há ${seconds} seg`;
+  }
+
+  const minutes = Math.floor(seconds / 60);
+
+  if (minutes === 1) {
+    return 'Atualizado há 1 min';
+  }
+
+  return `Atualizado há ${minutes} min`;
+};
 export default function LeafletMap({
   center,
   markers = [],
@@ -209,6 +239,16 @@ export default function LeafletMap({
   height = 430,
   isDark = false,
 }) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
   const safeCenter = useMemo(() => {
     if (center?.length === 2 && isValidCoord(center[1], center[0])) {
       return [Number(center[1]), Number(center[0])];
@@ -414,70 +454,77 @@ export default function LeafletMap({
     </Marker>
   );
 })}
-{visibleMarkers.map((marker, index) => (
-  <Marker
-    key={marker.id || `bus_${index}`}
-    position={[Number(marker.lat), Number(marker.lon)]}
-    icon={busIcon || fallbackBusIcon}
-  >
-    <Popup>
-      <div style={{ minWidth: 230 }}>
-        <strong>Linha {marker.line || 'ônibus'}</strong>
+{visibleMarkers.map((marker, index) => {
+  const gpsUpdatedText = formatGpsUpdatedAt(marker.gpsTimestamp, now);
 
-        <br />
+  return (
+    <Marker
+      key={marker.id || `bus_${index}`}
+      position={[Number(marker.lat), Number(marker.lon)]}
+      icon={busIcon || fallbackBusIcon}
+    >
+      <Popup>
+        <div style={{ minWidth: 230 }}>
+          <strong>Linha {marker.line || 'ônibus'}</strong>
 
-        {marker.itinerary ? (
-          <span>{marker.itinerary}</span>
-        ) : (
-          <span>
-            {marker.fromStop || 'Origem'} → {marker.toStop || 'Destino'}
-          </span>
-        )}
+          <br />
 
-        <div style={{ marginTop: 10 }}>
-          {marker.vehicleNumber ? (
-            <>
-              <strong>Veículo:</strong> {marker.vehicleNumber}
-              <br />
-            </>
-          ) : null}
+          {marker.itinerary ? (
+            <span>{marker.itinerary}</span>
+          ) : (
+            <span>
+              {marker.fromStop || 'Origem'} → {marker.toStop || 'Destino'}
+            </span>
+          )}
 
-          {marker.etaMinutes != null ? (
-            <>
-              <strong>Passa na parada em:</strong> {marker.etaMinutes} min
-              <br />
-            </>
-          ) : null}
+          <div style={{ marginTop: 10 }}>
+            {marker.vehicleNumber ? (
+              <>
+                <strong>Veículo:</strong> {marker.vehicleNumber}
+                <br />
+              </>
+            ) : null}
 
-          {marker.sentido ? (
-            <>
-              <strong>Sentido:</strong> {marker.sentido}
-              <br />
-            </>
-          ) : null}
+            {marker.etaMinutes != null ? (
+              <>
+                <strong>Passa na parada em:</strong>{' '}
+                {Number(marker.etaMinutes) <= 1 ? 'AGORA' : `${marker.etaMinutes} min`}
+                <br />
+              </>
+            ) : null}
 
-          {marker.gpsUpdatedMinutes != null ? (
-            <>
-              <br />
-              <span style={{ opacity: 0.72 }}>
-                GPS atualizado há {marker.gpsUpdatedMinutes} min
-              </span>
-            </>
-          ) : null}
+            {marker.sentido ? (
+              <>
+                <strong>Sentido:</strong> {marker.sentido}
+                <br />
+              </>
+            ) : null}
 
-          {marker.isGpsOnly ? (
-            <>
-              <br />
-              <span style={{ opacity: 0.72 }}>
-                Previsão estimada por GPS
-              </span>
-            </>
-          ) : null}
+            <strong>Velocidade:</strong> {Math.round(marker.speed || 0)} km/h
+
+            {gpsUpdatedText ? (
+              <>
+                <br />
+                <span style={{ opacity: 0.78 }}>
+                  {gpsUpdatedText}
+                </span>
+              </>
+            ) : null}
+
+            {marker.isGpsOnly ? (
+              <>
+                <br />
+                <span style={{ opacity: 0.72 }}>
+                  Previsão estimada por GPS
+                </span>
+              </>
+            ) : null}
+          </div>
         </div>
-      </div>
-    </Popup>
-  </Marker>
-))}
+      </Popup>
+    </Marker>
+  );
+})}
       </MapContainer>
 
       <div
