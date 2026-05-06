@@ -426,21 +426,43 @@ const RouteResultRefatorado = ({ routes, origin, destination, loading, userLocat
       .slice(0, 5);
   }, [processedRoutes]);
 
-  const liveMarkers = useMemo(
-    () =>
-      visibleBusRoutes.map((route, index) => ({
-        id: `bus_${route.id || index}_${route.line}_${route.realTimeGPS.numero || index}`,
-        lat: Number(route.realTimeGPS.lat),
-        lon: Number(route.realTimeGPS.lon),
-        type: 'bus',
-        line: route.line,
-        bearing: route.realTimeGPS.bearing ?? 0,
-        vehicleNumber: route.realTimeGPS.numero || '',
-        popup: `Linha ${route.line} • Veículo ${route.realTimeGPS.numero || 'ao vivo'
-          } • ${Math.round(route.realTimeGPS.speed || 0)} km/h`,
-      })),
-    [visibleBusRoutes]
-  );
+const liveMarkers = useMemo(
+  () =>
+    visibleBusRoutes.map((route, index) => ({
+      id: `bus_${route.id || index}_${route.line}_${route.realTimeGPS.numero || index}`,
+      lat: Number(route.realTimeGPS.lat),
+      lon: Number(route.realTimeGPS.lon),
+      type: 'bus',
+
+      line: route.line,
+      vehicleNumber: route.realTimeGPS.numero || '',
+      bearing: route.realTimeGPS.bearing ?? 0,
+      speed: route.realTimeGPS.speed ?? 0,
+
+      fromStop: route.fromStop || route.nearestStopName || 'Parada próxima',
+      toStop: route.toStop || route.destination || 'Destino',
+      destination: route.destination || '',
+      sentido: route.realTimeGPS.sentido || route.sentido || null,
+
+      etaMinutes:
+        route.etaToNearestStopMinutes ??
+        route.time ??
+        null,
+
+      gpsUpdatedMinutes:
+        route.gpsUpdatedMinutes ??
+        null,
+
+      isGpsOnly: route.isGpsOnly || false,
+
+      itinerary:
+        route.routeLongName ||
+        route.longName ||
+        route.instruction ||
+        `Linha ${route.line} — ${route.fromStop || 'origem'} → ${route.toStop || route.destination || 'destino'}`,
+    })),
+  [visibleBusRoutes]
+);
 
   const liveCenter = useMemo(() => {
     const routeWithStop = processedRoutes.find(

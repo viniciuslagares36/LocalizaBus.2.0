@@ -22,7 +22,8 @@ const createIcon = (url, size = 28, anchorY = 28) =>
   });
 
 const busIcon = createIcon(BUS_ICON_URL, 20, 20);
-const stopIcon = createIcon(BUS_STOP_ICON_URL, 18, 18);
+const boardingStopIcon = createIcon(BUS_STOP_ICON_URL, 20, 20);
+const nearbyStopIcon = createIcon(BUS_STOP_ICON_URL, 14, 14);
 
 const fallbackBusIcon = L.divIcon({
   className: '',
@@ -81,6 +82,35 @@ const getRoutePolylines = (routes = []) => {
 const getStopsFromRoutes = (routes = []) => {
   const map = new Map();
 
+  const addPassingRouteToStop = (key, route) => {
+    const current = map.get(key);
+    if (!current) return;
+
+    const passingRoutes = current.passingRoutes || [];
+
+    const alreadyExists = passingRoutes.some(
+      (item) => item.id === route.id || item.line === route.line
+    );
+
+    if (!alreadyExists) {
+      passingRoutes.push({
+        id: route.id,
+        line: route.line,
+        vehicleNumber: route.realTimeGPS?.numero || '',
+        etaMinutes: route.etaToNearestStopMinutes ?? route.time ?? null,
+        fromStop: route.fromStop || route.nearestStopName || 'Parada próxima',
+        toStop: route.toStop || route.destination || 'Destino',
+        sentido: route.realTimeGPS?.sentido || route.sentido || null,
+        isGpsOnly: route.isGpsOnly || false,
+      });
+    }
+
+    map.set(key, {
+      ...current,
+      passingRoutes,
+    });
+  };
+
   routes.forEach((route) => {
     const nearbyStops = Array.isArray(route.nearbyStops) ? route.nearbyStops : [];
 
@@ -88,29 +118,37 @@ const getStopsFromRoutes = (routes = []) => {
       if (isValidCoord(stop.lat, stop.lon)) {
         const key = `nearby_${stop.stopId || stop.id || stop.lat}_${stop.lon}`;
 
-        map.set(key, {
-          id: key,
-          name: stop.stopName || stop.name || 'Parada próxima',
-          lat: Number(stop.lat),
-          lon: Number(stop.lon),
-          line: route.line,
-          type: 'nearby',
-          distanceKm: stop.distanceKm ?? null,
-        });
+        if (!map.has(key)) {
+          map.set(key, {
+            id: key,
+            name: stop.stopName || stop.name || 'Parada próxima',
+            lat: Number(stop.lat),
+            lon: Number(stop.lon),
+            line: route.line,
+            type: 'nearby',
+            distanceKm: stop.distanceKm ?? null,
+            passingRoutes: [],
+          });
+        }
       }
     });
 
     if (isValidCoord(route.nearestStopLat, route.nearestStopLon)) {
       const key = `boarding_${route.nearestStopLat}_${route.nearestStopLon}`;
 
-      map.set(key, {
-        id: key,
-        name: route.nearestStopName || route.fromStop || 'Parada de embarque',
-        lat: Number(route.nearestStopLat),
-        lon: Number(route.nearestStopLon),
-        line: route.line,
-        type: 'boarding',
-      });
+      if (!map.has(key)) {
+        map.set(key, {
+          id: key,
+          name: route.nearestStopName || route.fromStop || 'Parada de embarque',
+          lat: Number(route.nearestStopLat),
+          lon: Number(route.nearestStopLon),
+          line: route.line,
+          type: 'boarding',
+          passingRoutes: [],
+        });
+      }
+
+      addPassingRouteToStop(key, route);
     }
   });
 
@@ -304,47 +342,142 @@ export default function LeafletMap({
 
 {routeStops.map((stop) => {
   const isBoarding = stop.type === 'boarding';
+  const passingRoutes = stop.passingRoutes || [];
 
   return (
     <Marker
       key={`stop_${stop.id}`}
       position={[stop.lat, stop.lon]}
-      icon={isBoarding ? stopIcon : fallbackStopIcon}
+      icon={isBoarding ? boardingStopIcon : nearbyStopIcon}
     >
       <Popup>
-        <strong>{isBoarding ? 'Parada de embarque' : 'Parada próxima'}</strong>
-        <br />
-        {stop.name}
-        {stop.distanceKm != null ? (
-          <>
-            <br />
-            {Number(stop.distanceKm).toFixed(1)} km da origem
-          </>
-        ) : null}
+        <div style={{ minWidth: 230 }}>
+          <strong>
+            {isBoarding ? 'Parada de embarque' : 'Parada próxima'}
+          </strong>
+
+          <br />
+          {stop.name}
+
+          {stop.distanceKm != null ? (
+            <>
+              <br />
+              <span>{Number(stop.distanceKm).toFixed(1)} km da origem</span>
+            </>
+          ) : null}
+
+          <div style={{ marginTop: 10 }}>
+            <strong>Ônibus previstos:</strong>
+
+            {passingRoutes.length ? (
+              <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
+                {passingRoutes.map((route) => (
+                  <div
+                    key={`${stop.id}_${route.id}_${route.line}`}
+                    style={{
+                      padding: '7px 8px',
+                      borderRadius: 10,
+                      background: 'rgba(15, 23, 42, 0.75)',
+                      border: '1px solid rgba(34, 211, 238, 0.22)',
+                    }}
+                  >
+                    <div style={{ fontWeight: 800 }}>
+                      Linha {route.line}
+                      {route.etaMinutes != null
+                        ? ` • ${route.etaMinutes} min`
+                        : ''}
+                    </div>
+
+                    <div style={{ fontSize: 11, opacity: 0.82 }}>
+                      {route.fromStop} → {route.toStop}
+                    </div>
+
+                    {route.sentido ? (
+                      <div style={{ fontSize: 11, opacity: 0.72 }}>
+                        Sentido: {route.sentido}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
+                Nenhum ônibus previsto nesta busca.
+              </div>
+            )}
+          </div>
+        </div>
       </Popup>
     </Marker>
   );
 })}
+{visibleMarkers.map((marker, index) => (
+{visibleMarkers.map((marker, index) => (
+  <Marker
+    key={marker.id || `bus_${index}`}
+    position={[Number(marker.lat), Number(marker.lon)]}
+    icon={busIcon || fallbackBusIcon}
+  >
+    <Popup>
+      <div style={{ minWidth: 230 }}>
+        <strong>Linha {marker.line || 'ônibus'}</strong>
 
-        {visibleMarkers.map((marker, index) => (
-          <Marker
-            key={marker.id || `bus_${index}`}
-            position={[Number(marker.lat), Number(marker.lon)]}
-            icon={busIcon || fallbackBusIcon}
-          >
-            <Popup>
-              <strong>Linha {marker.line || 'ônibus'}</strong>
+        <br />
+
+        {marker.itinerary ? (
+          <span>{marker.itinerary}</span>
+        ) : (
+          <span>
+            {marker.fromStop || 'Origem'} → {marker.toStop || 'Destino'}
+          </span>
+        )}
+
+        <div style={{ marginTop: 10 }}>
+          {marker.vehicleNumber ? (
+            <>
+              <strong>Veículo:</strong> {marker.vehicleNumber}
               <br />
-              {marker.vehicleNumber ? `Veículo ${marker.vehicleNumber}` : 'Veículo ao vivo'}
-              {marker.popup ? (
-                <>
-                  <br />
-                  {marker.popup}
-                </>
-              ) : null}
-            </Popup>
-          </Marker>
-        ))}
+            </>
+          ) : null}
+
+          {marker.etaMinutes != null ? (
+            <>
+              <strong>Passa na parada em:</strong> {marker.etaMinutes} min
+              <br />
+            </>
+          ) : null}
+
+          {marker.sentido ? (
+            <>
+              <strong>Sentido:</strong> {marker.sentido}
+              <br />
+            </>
+          ) : null}
+
+          <strong>Velocidade:</strong> {Math.round(marker.speed || 0)} km/h
+
+          {marker.gpsUpdatedMinutes != null ? (
+            <>
+              <br />
+              <span style={{ opacity: 0.72 }}>
+                GPS atualizado há {marker.gpsUpdatedMinutes} min
+              </span>
+            </>
+          ) : null}
+
+          {marker.isGpsOnly ? (
+            <>
+              <br />
+              <span style={{ opacity: 0.72 }}>
+                Previsão estimada por GPS
+              </span>
+            </>
+          ) : null}
+        </div>
+      </div>
+    </Popup>
+  </Marker>
+))}
       </MapContainer>
 
       <div
