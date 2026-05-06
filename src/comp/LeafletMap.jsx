@@ -231,34 +231,56 @@ const formatGpsUpdatedAt = (timestamp, now = Date.now()) => {
 
   return `Atualizado há ${minutes} min`;
 };
-function FollowSelectedBus({ markers, selectedRouteId }) {
+function FollowSelectedTarget({ markers, routes, selectedRouteId }) {
   const map = useMap();
-  const lastPositionRef = useRef(null);
+  const lastTargetRef = useRef(null);
 
   useEffect(() => {
     if (!selectedRouteId) return;
 
-    const selected = markers.find((marker) => marker.routeId === selectedRouteId);
+    const selectedBus = markers.find(
+      (marker) => marker.routeId === selectedRouteId
+    );
 
-    if (!selected || !isValidCoord(selected.lat, selected.lon)) return;
+    if (selectedBus && isValidCoord(selectedBus.lat, selectedBus.lon)) {
+      const nextPosition = [Number(selectedBus.lat), Number(selectedBus.lon)];
+      const targetKey = `bus_${selectedRouteId}_${nextPosition[0]}_${nextPosition[1]}`;
 
-    const nextPosition = [Number(selected.lat), Number(selected.lon)];
-    const lastPosition = lastPositionRef.current;
+      if (lastTargetRef.current === targetKey) return;
 
-    const changed =
-      !lastPosition ||
-      lastPosition[0] !== nextPosition[0] ||
-      lastPosition[1] !== nextPosition[1];
+      lastTargetRef.current = targetKey;
 
-    if (!changed) return;
+      map.flyTo(nextPosition, Math.max(map.getZoom(), 16), {
+        animate: true,
+        duration: 0.7,
+      });
 
-    lastPositionRef.current = nextPosition;
+      return;
+    }
 
-    map.flyTo(nextPosition, Math.max(map.getZoom(), 16), {
-      animate: true,
-      duration: 0.7,
-    });
-  }, [markers, selectedRouteId, map]);
+    const selectedRoute = routes.find((route) => route.id === selectedRouteId);
+
+    if (
+      selectedRoute &&
+      isValidCoord(selectedRoute.nearestStopLat, selectedRoute.nearestStopLon)
+    ) {
+      const nextPosition = [
+        Number(selectedRoute.nearestStopLat),
+        Number(selectedRoute.nearestStopLon),
+      ];
+
+      const targetKey = `route_${selectedRouteId}_${nextPosition[0]}_${nextPosition[1]}`;
+
+      if (lastTargetRef.current === targetKey) return;
+
+      lastTargetRef.current = targetKey;
+
+      map.flyTo(nextPosition, Math.max(map.getZoom(), 16), {
+        animate: true,
+        duration: 0.7,
+      });
+    }
+  }, [markers, routes, selectedRouteId, map]);
 
   return null;
 }
@@ -354,11 +376,12 @@ export default function LeafletMap({
   boardingStop={boardingStop}
 />
 
-<FollowSelectedBus
+<FollowSelectedTarget
   markers={visibleMarkers}
+  routes={routes}
   selectedRouteId={selectedRouteId}
 />
-       {userPosition && isValidCoord(userPosition.lat, userPosition.lon) && (
+{userPosition && isValidCoord(userPosition.lat, userPosition.lon) && (
   <>
     <CircleMarker
       center={[Number(userPosition.lat), Number(userPosition.lon)]}
@@ -371,6 +394,7 @@ export default function LeafletMap({
         opacity: 0.85,
       }}
     />
+
     <CircleMarker
       center={[Number(userPosition.lat), Number(userPosition.lon)]}
       radius={8}
@@ -384,29 +408,29 @@ export default function LeafletMap({
     >
       <Popup>
         <strong>Origem da busca</strong>
- <br />
-Caminhe até a parada destacada<strong>Você está aqui</strong>
+        <br />
+        Caminhe até a parada destacada
       </Popup>
     </CircleMarker>
   </>
 )}
 
 {userPosition &&
- boardingStop &&
- isValidCoord(userPosition.lat, userPosition.lon) &&
- isValidCoord(boardingStop.lat, boardingStop.lon) && (
-  <Polyline
-    positions={[
-      [Number(userPosition.lat), Number(userPosition.lon)],
-      [Number(boardingStop.lat), Number(boardingStop.lon)],
-    ]}
-    pathOptions={{
-      color: '#00e5ff',
-      weight: 4,
-      opacity: 0.95,
-      dashArray: '10 8',
-    }}
-  />
+  boardingStop &&
+  isValidCoord(userPosition.lat, userPosition.lon) &&
+  isValidCoord(boardingStop.lat, boardingStop.lon) && (
+    <Polyline
+      positions={[
+        [Number(userPosition.lat), Number(userPosition.lon)],
+        [Number(boardingStop.lat), Number(boardingStop.lon)],
+      ]}
+      pathOptions={{
+        color: '#00e5ff',
+        weight: 4,
+        opacity: 0.95,
+        dashArray: '10 8',
+      }}
+    />
 )}
 
         {routeLines.map((route) => (
@@ -419,6 +443,29 @@ Caminhe até a parada destacada<strong>Você está aqui</strong>
             }}
           />
         ))}
+{selectedRouteId &&
+  routes
+    .filter((route) => route.id === selectedRouteId)
+    .filter((route) =>
+      isValidCoord(route.nearestStopLat, route.nearestStopLon)
+    )
+    .map((route) => (
+      <CircleMarker
+        key={`selected_route_stop_${route.id}`}
+        center={[
+          Number(route.nearestStopLat),
+          Number(route.nearestStopLon),
+        ]}
+        radius={18}
+        pathOptions={{
+          color: '#22c55e',
+          fillColor: '#22c55e',
+          fillOpacity: 0.14,
+          weight: 3,
+          opacity: 0.95,
+        }}
+      />
+    ))}
 
 {routeStops.map((stop) => {
   const isBoarding = stop.type === 'boarding';
