@@ -423,20 +423,25 @@ const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCou
                 </motion.button>
               )}
 
-<motion.button
-  whileHover={{ scale: 1.04 }}
-  whileTap={{ scale: 0.95 }}
-  onClick={() => {
-    if (route.isLive) {
-      onFocusMap?.(route.id);
-    }
-  }}
-  className={`rounded-full px-4 py-1.5 text-xs font-semibold text-white ${
-    route.isLive ? 'bg-green-600' : 'bg-blue-500'
-  }`}
->
-  {route.isLive ? 'Ver mapa' : 'Detalhes'}
-</motion.button>
+              {route.isLive ? (
+                <motion.button
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => onFocusMap?.(route.id)}
+                  className="rounded-full px-4 py-1.5 text-xs font-semibold text-white bg-green-600"
+                >
+                  Ver mapa
+                </motion.button>
+              ) : route.nearestStopLat && route.nearestStopLon ? (
+                <motion.button
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => onFocusMap?.(route.id)}
+                  className="rounded-full px-4 py-1.5 text-xs font-semibold text-white bg-blue-500"
+                >
+                  Ver rota
+                </motion.button>
+              ) : null}
             </>
           )}
         </div>
