@@ -104,32 +104,74 @@ const getGpsUpdateMinutes = (route) => {
 };
 
 const getLiveBadgeText = (route) => {
-  if (route?.etaToNearestStopMinutes != null) {
-    return `Passa em ${route.etaToNearestStopMinutes} min`;
+  const eta =
+    route?.etaToNearestStopMinutes ??
+    route?.time ??
+    null;
+
+  if (eta == null || !Number.isFinite(Number(eta))) {
+    return 'Ao vivo';
   }
 
-  const minutes = getGpsUpdateMinutes(route);
+  const minutes = Number(eta);
 
-  if (minutes != null) {
-    return `GPS há ${minutes} min`;
-  }
+  if (minutes <= 1) return 'AGORA';
 
-  return 'GPS ativo';
+  return `${minutes} min`;
 };
+
+const getEtaBadgeStyle = (route) => {
+  const eta =
+    route?.etaToNearestStopMinutes ??
+    route?.time ??
+    null;
+
+  const minutes = Number(eta);
+
+  if (!Number.isFinite(minutes)) {
+    return {
+      background: '#16a34a',
+      border: '1px solid #15803d',
+      boxShadow: '0 6px 16px rgba(22, 163, 74, 0.28)',
+    };
+  }
+
+  if (minutes <= 1) {
+    return {
+      background: '#dc2626',
+      border: '1px solid #b91c1c',
+      boxShadow: '0 6px 16px rgba(220, 38, 38, 0.35)',
+    };
+  }
+
+  if (minutes <= 3) {
+    return {
+      background: '#dc2626',
+      border: '1px solid #b91c1c',
+      boxShadow: '0 6px 16px rgba(220, 38, 38, 0.32)',
+    };
+  }
+
+  return {
+    background: '#16a34a',
+    border: '1px solid #15803d',
+    boxShadow: '0 6px 16px rgba(22, 163, 74, 0.28)',
+  };
+};
+
 
 const LiveGpsBadge = memo(({ route }) => {
   const label = getLiveBadgeText(route);
+  const style = getEtaBadgeStyle(route);
 
   return (
     <motion.div
       whileHover={{ scale: 1.03 }}
       className="inline-flex items-center justify-center gap-2 rounded-full px-3 py-1.5 text-xs font-extrabold select-none"
       style={{
-        background: '#dc2626',
+        ...style,
         color: '#ffffff',
-        border: '1px solid #b91c1c',
-        boxShadow: '0 6px 16px rgba(220, 38, 38, 0.28)',
-        minWidth: 118,
+        minWidth: 88,
       }}
       title="Tempo estimado para o ônibus passar na parada próxima"
     >
@@ -476,6 +518,7 @@ const liveMarkers = useMemo(
   () =>
     visibleBusRoutes.map((route, index) => ({
       id: `bus_${route.id || index}_${route.line}_${route.realTimeGPS.numero || index}`,
+      routeId: route.id,
       lat: Number(route.realTimeGPS.lat),
       lon: Number(route.realTimeGPS.lon),
       type: 'bus',
@@ -497,6 +540,7 @@ const liveMarkers = useMemo(
 
       gpsUpdatedMinutes:
         route.gpsUpdatedMinutes ??
+        route.realTimeGPS?.gpsUpdatedMinutes ??
         null,
 
       isGpsOnly: route.isGpsOnly || false,

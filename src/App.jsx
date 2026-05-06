@@ -1057,36 +1057,49 @@ const useRouteSearch = () => {
           const rebuiltRoutes = baseRoutesWithStops.map((r) => {
             const rv = findBestVehicleForRoute(nv, r);
 
-            if (rv) {
-              const etaMin = getEtaMinutes(rv.eta);
-              const snappedPosition = snapVehicleToRoute(rv, r);
+if (rv) {
+  const etaMin = getEtaMinutes(rv.eta);
+  const snappedPosition = snapVehicleToRoute(rv, r);
 
-              return {
-                ...r,
-                time: etaMin ?? r.time,
-                realTimeGPS: {
-                  lat: snappedPosition?.lat ?? Number(rv.lat),
-                  lon: snappedPosition?.lon ?? Number(rv.lon),
+  const stopForEta = {
+    lat: r.nearestStopLat,
+    lon: r.nearestStopLon,
+  };
 
-                  rawLat: Number(rv.lat),
-                  rawLon: Number(rv.lon),
+  const etaToNearestStopMinutes =
+    estimateBusEtaToStop(rv, stopForEta) ??
+    etaMin ??
+    r.etaToNearestStopMinutes ??
+    r.time;
 
-                  snappedToRoute: snappedPosition?.snappedToRoute || false,
-                  snapDistanceKm: snappedPosition?.snapDistanceKm ?? null,
+  return {
+    ...r,
+    time: etaToNearestStopMinutes,
+    etaToNearestStopMinutes,
+    realTimeGPS: {
+      lat: snappedPosition?.lat ?? Number(rv.lat),
+      lon: snappedPosition?.lon ?? Number(rv.lon),
 
-                  bearing: rv.bearing,
-                  speed: rv.speed,
-                  eta: rv.eta,
-                  horario: rv.horario || rv.updatedAt,
-                  updatedAt: rv.updatedAt || rv.horario,
-                  numero: rv.numero,
-                  line: rv.line,
-                  sentido: rv.sentido || null,
-                  operadora: getVehicleOperatorName(rv),
-                },
-                isLive: true,
-              };
-            }
+      rawLat: Number(rv.lat),
+      rawLon: Number(rv.lon),
+
+      snappedToRoute: snappedPosition?.snappedToRoute || false,
+      snapDistanceKm: snappedPosition?.snapDistanceKm ?? null,
+
+      bearing: rv.bearing,
+      speed: rv.speed,
+      eta: rv.eta,
+      horario: rv.horario || rv.updatedAt,
+      updatedAt: rv.updatedAt || rv.horario,
+      numero: rv.numero,
+      line: rv.line,
+      sentido: rv.sentido || null,
+      operadora: getVehicleOperatorName(rv),
+    },
+    gpsUpdatedMinutes: getGpsAgeMinutes(rv),
+    isLive: true,
+  };
+}
 
             return r.isLive ? r : { ...r, isLive: false };
           });
@@ -1105,7 +1118,7 @@ const useRouteSearch = () => {
     };
 
     clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(refresh, 15000);
+    intervalRef.current = setInterval(refresh, 10000);
 
     return () => {
       clearInterval(intervalRef.current);

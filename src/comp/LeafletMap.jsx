@@ -382,11 +382,14 @@ export default function LeafletMap({
                     }}
                   >
                     <div style={{ fontWeight: 800 }}>
-                      Linha {route.line}
-                      {route.etaMinutes != null
-                        ? ` • ${route.etaMinutes} min`
-                        : ''}
-                    </div>
+  Linha {route.line}
+  {route.etaMinutes != null ? (
+    <>
+      {' • '}
+      {Number(route.etaMinutes) <= 1 ? 'AGORA' : `${route.etaMinutes} min`}
+    </>
+  ) : null}
+</div>
 
                     <div style={{ fontSize: 11, opacity: 0.82 }}>
                       {route.fromStop} → {route.toStop}
@@ -452,8 +455,6 @@ export default function LeafletMap({
               <br />
             </>
           ) : null}
-
-          <strong>Velocidade:</strong> {Math.round(marker.speed || 0)} km/h
 
           {marker.gpsUpdatedMinutes != null ? (
             <>
