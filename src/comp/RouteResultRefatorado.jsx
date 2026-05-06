@@ -451,9 +451,21 @@ const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCou
 });
 
 // ─── Componente principal ────────────────────────────────────────────────────
-const RouteResultRefatorado = ({ routes, origin, destination, loading, userLocation, isDark }) => {
+const RouteResultRefatorado = ({
+  routes,
+  origin,
+  destination,
+  loading,
+  userLocation,
+  isDark,
+  allDfStops = [],
+  pickedLocation = null,
+  onPickLocation,
+  pickingLocation = false,
+  onTogglePickingLocation,
+}) => {
   const [walkRoute, setWalkRoute] = useState(null);
-  const [selectedRouteId, setSelectedRouteId] = useState(null);
+    const [selectedRouteId, setSelectedRouteId] = useState(null);
 
 const processedRoutes = useMemo(() => {
   if (!routes?.length) return [];
@@ -737,16 +749,28 @@ const liveMarkers = useMemo(
           </span>
         </div>
 
-{hasLive && liveCenter && (
+{(liveCenter || pickedLocation || userPosition || allDfStops.length > 0) && (
   <div className="rounded-2xl overflow-hidden border border-cyan-400/20">
-<LeafletMap
-  center={liveCenter}
-  markers={liveMarkers}
-  routes={processedRoutes}
-  userPosition={userPosition}
-  selectedRouteId={selectedRouteId}
-  isDark={isDark}
-/>
+    <LeafletMap
+      center={
+        liveCenter ||
+        (pickedLocation
+          ? [pickedLocation.lon, pickedLocation.lat]
+          : userPosition
+            ? [userPosition.lon, userPosition.lat]
+            : [-47.8828, -15.7939])
+      }
+      markers={liveMarkers}
+      routes={processedRoutes}
+      userPosition={userPosition}
+      selectedRouteId={selectedRouteId}
+      isDark={isDark}
+      allStops={allDfStops}
+      pickedLocation={pickedLocation}
+      onPickLocation={onPickLocation}
+      pickingLocation={pickingLocation}
+      onTogglePickingLocation={onTogglePickingLocation}
+    />
   </div>
 )}
 

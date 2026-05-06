@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import axios from 'axios';
+import LeafletMap from './comp/LeafletMap';
 import RouteResultRefatorado from './comp/RouteResultRefatorado';
 import { normalizeTransitlandItineraryMode } from './services/transitland';
 import { findLocalDfPlaces, getAllSemobStops } from './services/semobStops';
@@ -1452,6 +1453,9 @@ const ThemeToggle = ({ dark, onToggle }) => (
 // ─── APP ─────────────────────────────────────────
 function App() {
   const [activeSlide, setActiveSlide] = useState(0);
+  const [allDfStops, setAllDfStops] = useState([]);
+  const [pickedLocation, setPickedLocation] = useState(null);
+  const [pickingLocation, setPickingLocation] = useState(false);
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
   const [selectedMode, setSelectedMode] = useState('bus');
@@ -1467,6 +1471,74 @@ function App() {
     searchBusLine,
   } = useRouteSearch();
   const searchRef = useRef(null);
+  useEffect(() => {
+  let mounted = true;
+
+  const loadDfStops = async () => {
+    try {
+      const stops = await getAllSemobStops();
+
+      if (!mounted) return;
+
+      const normalizedStops = (stops || [])
+        .map((stop) => ({
+          id: stop.stopId || `${stop.position?.lat}_${stop.position?.lon}`,
+          stopId: stop.stopId || null,
+          name: stop.name || 'Parada de ônibus',
+          lat: Number(stop.position?.lat),
+          lon: Number(stop.position?.lon),
+          address: stop.address || '',
+        }))
+        .filter((stop) => Number.isFinite(stop.lat) && Number.isFinite(stop.lon));
+
+      setAllDfStops(normalizedStops);
+    } catch (error) {
+      console.warn('Não foi possível carregar as paradas do DF:', error?.message || error);
+    }
+  };
+
+  loadDfStops();
+
+  return () => {
+    mounted = false;
+  };
+}, []);
+
+  const handlePickLocation = async ({ lat, lon }) => {
+  const coords = {
+    lat: Number(lat),
+    lon: Number(lon),
+  };
+
+  setPickedLocation(coords);
+  setUserLocationCoords(coords);
+  setOrigin('Local escolhido no mapa');
+
+  window.__lastOriginCoords = coords;
+  window.__lastOriginAddress = 'Local escolhido no mapa';
+
+  try {
+    const response = await axios.get(
+      `https://api.tomtom.com/search/2/reverseGeocode/${coords.lat},${coords.lon}.json`,
+      {
+        params: {
+          key: TOMTOM_API_KEY,
+          returnSpeedLimit: false,
+          language: 'pt-BR',
+        },
+      }
+    );
+
+    const address = response.data.addresses?.[0]?.address?.freeformAddress;
+
+    if (address) {
+      setOrigin(address);
+      window.__lastOriginAddress = address;
+    }
+  } catch (error) {
+    console.warn('Não foi possível buscar o endereço do local escolhido:', error?.message || error);
+  }
+};
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
@@ -1509,28 +1581,33 @@ function App() {
     );
   };
 
-  const handleSearch = async () => {
-    const safeO = sanitizeInput(origin);
-    const safeD = sanitizeInput(destination);
+ const handleSearch = async () => {
+  const safeO = sanitizeInput(origin);
+  const safeD = sanitizeInput(destination);
 
-    if (!safeO || !safeD) return;
+  if (!safeO || !safeD) return;
 
-    setHasSearched(true);
+  setHasSearched(true);
 
-    if (selectedMode === 'bus') {
-      if (isBusLineSearch(safeO)) {
-        await searchBusLine(safeO, safeO, safeD);
-        return;
-      }
-
-      if (isBusLineSearch(safeD)) {
-        await searchBusLine(safeD, safeO, safeD);
-        return;
-      }
+  if (selectedMode === 'bus') {
+    if (isBusLineSearch(safeO)) {
+      await searchBusLine(safeO, safeO, safeD);
+      return;
     }
 
-    await searchRoute(safeO, safeD, selectedMode);
-  };
+    if (isBusLineSearch(safeD)) {
+      await searchBusLine(safeD, safeO, safeD);
+      return;
+    }
+  }
+
+  if (pickedLocation) {
+    window.__lastOriginCoords = pickedLocation;
+    window.__lastOriginAddress = safeO || 'Local escolhido no mapa';
+  }
+
+  await searchRoute(safeO, safeD, selectedMode);
+};
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] transition-colors duration-500 font-apple">
@@ -1603,6 +1680,26 @@ function App() {
               <LocationInput value={destination} onChange={setDestination} placeholder="Para onde você vai?" icon={Search}
                 onDetectLocation={() => detectLocation(setDestination)} detectingLocation={locationLoading} />
             </div>
+            <div className="mt-4 rounded-2xl overflow-hidden border border-[var(--border)]">
+  <LeafletMap
+    center={
+      pickedLocation
+        ? [pickedLocation.lon, pickedLocation.lat]
+        : [-47.8828, -15.7939]
+    }
+    markers={[]}
+    routes={[]}
+    userPosition={userLocationCoords}
+    selectedRouteId={null}
+    height={320}
+    isDark={dark}
+    allStops={allDfStops}
+    pickedLocation={pickedLocation}
+    onPickLocation={handlePickLocation}
+    pickingLocation={pickingLocation}
+    onTogglePickingLocation={() => setPickingLocation((value) => !value)}
+  />
+</div>
 
             <div className="mt-6">
               <p className="text-[10px] font-semibold text-[var(--text-tertiary)] uppercase tracking-widest mb-3">Tipo de transporte</p>
@@ -1633,7 +1730,21 @@ function App() {
               {loading ? <><Loader2 className="h-4 w-4 animate-spin" />Buscando rota…</> : 'Buscar rota agora'}
             </motion.button>
 
-            {(hasSearched || routes.length > 0) && <RouteResultRefatorado routes={routes} origin={origin} destination={destination} loading={loading} userLocation={userLocationCoords} isDark={dark} />}
+{(hasSearched || routes.length > 0) && (
+  <RouteResultRefatorado
+    routes={routes}
+    origin={origin}
+    destination={destination}
+    loading={loading}
+    userLocation={userLocationCoords}
+    isDark={dark}
+    allDfStops={allDfStops}
+    pickedLocation={pickedLocation}
+    onPickLocation={handlePickLocation}
+    pickingLocation={pickingLocation}
+    onTogglePickingLocation={() => setPickingLocation((value) => !value)}
+  />
+)}
 
             {error && (
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}

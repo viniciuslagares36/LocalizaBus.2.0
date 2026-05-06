@@ -6,6 +6,7 @@ import {
   Popup,
   Polyline,
   CircleMarker,
+  useMapEvents,
   useMap,
 } from 'react-leaflet';
 import L from 'leaflet';
@@ -24,6 +25,32 @@ const createIcon = (url, size = 28, anchorY = 28) =>
 const busIcon = createIcon(BUS_ICON_URL, 20, 20);
 const boardingStopIcon = createIcon(BUS_STOP_ICON_URL, 20, 20);
 const nearbyStopIcon = createIcon(BUS_STOP_ICON_URL, 14, 14);
+
+const userPickIcon = L.divIcon({
+  className: '',
+  html: `
+    <div style="
+      width: 34px;
+      height: 34px;
+      border-radius: 999px 999px 999px 4px;
+      background: #00e5ff;
+      transform: rotate(-45deg);
+      border: 3px solid white;
+      box-shadow: 0 8px 22px rgba(0,0,0,.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    ">
+      <div style="
+        transform: rotate(45deg);
+        font-size: 16px;
+      ">📍</div>
+    </div>
+  `,
+  iconSize: [34, 34],
+  iconAnchor: [17, 34],
+  popupAnchor: [0, -34],
+});
 
 const fallbackBusIcon = L.divIcon({
   className: '',
@@ -285,6 +312,94 @@ function FollowSelectedTarget({ markers, routes, selectedRouteId }) {
   return null;
 }
 
+function PickLocationOnMap({ enabled, onPickLocation }) {
+  useMapEvents({
+    click(e) {
+      if (!enabled || !onPickLocation) return;
+
+      onPickLocation({
+        lat: e.latlng.lat,
+        lon: e.latlng.lng,
+      });
+    },
+  });
+
+  return null;
+}
+
+function VisibleDfStopsLayer({ stops = [], hiddenStopKeys = new Set() }) {
+  const map = useMap();
+  const [viewport, setViewport] = useState(() => ({
+    bounds: map.getBounds(),
+    zoom: map.getZoom(),
+  }));
+
+  useEffect(() => {
+    const updateViewport = () => {
+      setViewport({
+        bounds: map.getBounds(),
+        zoom: map.getZoom(),
+      });
+    };
+
+    updateViewport();
+
+    map.on('moveend', updateViewport);
+    map.on('zoomend', updateViewport);
+
+    return () => {
+      map.off('moveend', updateViewport);
+      map.off('zoomend', updateViewport);
+    };
+  }, [map]);
+
+  const visibleStops = useMemo(() => {
+    if (!viewport.bounds) return [];
+
+    return stops.filter((stop) => {
+      const lat = Number(stop.lat ?? stop.position?.lat);
+      const lon = Number(stop.lon ?? stop.position?.lon);
+
+      if (!isValidCoord(lat, lon)) return false;
+
+      const key = `${lat.toFixed(6)}_${lon.toFixed(6)}`;
+      if (hiddenStopKeys.has(key)) return false;
+
+      return viewport.bounds.contains([lat, lon]);
+    });
+  }, [stops, viewport, hiddenStopKeys]);
+
+  if (viewport.zoom < 13) return null;
+
+  return visibleStops.map((stop) => {
+    const lat = Number(stop.lat ?? stop.position?.lat);
+    const lon = Number(stop.lon ?? stop.position?.lon);
+    const name = stop.name || stop.stopName || 'Parada de ônibus';
+
+    return (
+      <Marker
+        key={`df_stop_${stop.stopId || stop.id || `${lat}_${lon}`}`}
+        position={[lat, lon]}
+        icon={nearbyStopIcon || fallbackStopIcon}
+      >
+        <Popup>
+          <div style={{ minWidth: 180 }}>
+            <strong>{name}</strong>
+            <br />
+            {stop.stopId ? `Código: ${stop.stopId}` : 'Parada oficial do DF'}
+            {stop.address ? (
+              <>
+                <br />
+                {stop.address}
+              </>
+            ) : null}
+          </div>
+        </Popup>
+      </Marker>
+    );
+  });
+}
+
 export default function LeafletMap({
   center,
   markers = [],
@@ -293,6 +408,11 @@ export default function LeafletMap({
   selectedRouteId = null,
   height = 430,
   isDark = false,
+  allStops = [],
+  pickedLocation = null,
+  onPickLocation = null,
+  pickingLocation = false,
+  onTogglePickingLocation = null,
 }) {
   const [now, setNow] = useState(Date.now());
 
@@ -320,6 +440,12 @@ export default function LeafletMap({
 
   const routeLines = useMemo(() => getRoutePolylines(routes), [routes]);
   const routeStops = useMemo(() => getStopsFromRoutes(routes), [routes]);
+
+  const hiddenStopKeys = useMemo(() => {
+  return new Set(
+    routeStops.map((stop) => `${Number(stop.lat).toFixed(6)}_${Number(stop.lon).toFixed(6)}`)
+  );
+}, [routeStops]);
 
   const boardingStop = useMemo(() => {
   const firstRouteWithStop = routes.find(
@@ -368,6 +494,10 @@ export default function LeafletMap({
   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
   className={isDark ? 'leaflet-dark-tiles' : ''}
 />
+<PickLocationOnMap
+  enabled={pickingLocation}
+  onPickLocation={onPickLocation}
+/>
 <MapController
   center={center}
   markers={visibleMarkers}
@@ -381,6 +511,34 @@ export default function LeafletMap({
   routes={routes}
   selectedRouteId={selectedRouteId}
 />
+
+{pickedLocation && isValidCoord(pickedLocation.lat, pickedLocation.lon) && (
+  <Marker
+    position={[Number(pickedLocation.lat), Number(pickedLocation.lon)]}
+    icon={userPickIcon}
+    draggable
+    eventHandlers={{
+      dragend: (event) => {
+        const marker = event.target;
+        const position = marker.getLatLng();
+
+        if (onPickLocation) {
+          onPickLocation({
+            lat: position.lat,
+            lon: position.lng,
+          });
+        }
+      },
+    }}
+  >
+    <Popup>
+      <strong>Local escolhido</strong>
+      <br />
+      Arraste o balão ou clique em outro ponto do mapa.
+    </Popup>
+  </Marker>
+)}
+
 {userPosition && isValidCoord(userPosition.lat, userPosition.lon) && (
   <>
     <CircleMarker
@@ -414,6 +572,8 @@ export default function LeafletMap({
     </CircleMarker>
   </>
 )}
+
+
 
 {userPosition &&
   boardingStop &&
@@ -466,6 +626,11 @@ export default function LeafletMap({
         }}
       />
     ))}
+
+<VisibleDfStopsLayer
+  stops={allStops}
+  hiddenStopKeys={hiddenStopKeys}
+/>
 
 {routeStops.map((stop) => {
   const isBoarding = stop.type === 'boarding';
@@ -631,6 +796,42 @@ export default function LeafletMap({
 })}
       </MapContainer>
 
+{onTogglePickingLocation && (
+  <button
+    onClick={onTogglePickingLocation}
+    style={{
+      position: 'absolute',
+      top: 10,
+      right: 10,
+      zIndex: 600,
+      border: 'none',
+      borderRadius: 999,
+      padding: '10px 14px',
+      fontSize: 12,
+      fontWeight: 800,
+      cursor: 'pointer',
+      background: pickingLocation
+        ? '#00e5ff'
+        : isDark
+          ? 'rgba(15,23,42,.92)'
+          : 'rgba(255,255,255,.96)',
+      color: pickingLocation
+        ? '#001018'
+        : isDark
+          ? '#e5e7eb'
+          : '#111827',
+      boxShadow: '0 8px 20px rgba(0,0,0,.20)',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+    }}
+    title="Escolher local no mapa"
+  >
+    <span>📍</span>
+    <span>{pickingLocation ? 'Clique no mapa' : 'Escolher no mapa'}</span>
+  </button>
+)}
+
       <div
         style={{
           position: 'absolute',
@@ -646,7 +847,7 @@ export default function LeafletMap({
           boxShadow: '0 4px 14px rgba(0,0,0,.18)',
         }}
       >
-        {visibleMarkers.length} ônibus ao vivo • {routeStops.length} paradas
+{visibleMarkers.length} ônibus ao vivo • {(allStops?.length || routeStops.length)} paradas do DF
       </div>
     </div>
   );
