@@ -867,147 +867,240 @@ const useRouteSearch = () => {
       isSearchingRef.current = false;
     }
   };
-  const searchRoute = async (originAddress, destinationAddress, mode) => {
-    if (!originAddress || !destinationAddress || isSearchingRef.current) return;
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = new AbortController();
-    const { signal } = abortControllerRef.current;
-    isSearchingRef.current = true;
-    setLoading(true); setError(null);
-    try {
-      const [originCoords, destCoords] = await Promise.all([
-        geocodeAddress(originAddress, signal),
-        geocodeAddress(destinationAddress, signal)
-      ]);
-      const realtimeData = await getRealtimeVehicles(signal);
+const searchRoute = async (originAddress, destinationAddress, mode) => {
+  if (!originAddress || !destinationAddress || isSearchingRef.current) return;
 
-      const transitRoute = await getTransportPlan(originCoords, destCoords, signal, mode);
-      const nearbyStops = await getNearbyStops(originCoords);
+  abortControllerRef.current?.abort();
+  abortControllerRef.current = new AbortController();
 
-      window.__lastOriginCoords = originCoords;
-      window.__lastDestinationCoords = destCoords;
-      window.__lastOriginAddress = originAddress;
-      window.__lastDestinationAddress = destinationAddress;
-      window.__lastNearbyStops = nearbyStops;
-      window.__lastSearchMode = mode;
-      window.__lastSearchType = mode === 'bus' ? 'route' : mode;
+  const { signal } = abortControllerRef.current;
 
-      let combined = combineRoutes(transitRoute, nearbyStops, originAddress, destinationAddress, mode);
+  isSearchingRef.current = true;
+  setLoading(true);
+  setError(null);
 
-      // Guarda as rotas oficiais do Mobilibus/OTP para manter o snap no refresh.
-      window.__lastOtpRoutes = combined;
+  try {
+    const [originCoords, destCoords] = await Promise.all([
+      geocodeAddress(originAddress, signal),
+      geocodeAddress(destinationAddress, signal),
+    ]);
 
-      // Fallback principal de ônibus: GPS real do DFTrans/DF no Ponto.
-      if (mode === 'bus' && combined.length === 0) {
-        combined = buildLiveBusRoutes(realtimeData, originCoords, destCoords, originAddress, destinationAddress, nearbyStops);
-      }
+    const nearbyStopsPromise = getNearbyStops(originCoords);
 
-      // Fallback apresentável para ônibus/metrô: se não houver veículo com linha,
-      // mostramos paradas oficiais próximas da origem.
-      if (mode !== 'walk' && combined.length === 0 && nearbyStops.length > 0) {
-        combined = nearbyStops.slice(0, 5).map((stop, index) => ({
-          id: `semob_stop_${stop.stopId || index}`,
-          line: mode === 'metro' ? 'Estação/parada próxima' : 'Parada próxima',
-          routeId: stop.stopId || 'SEMOB_STOP',
-          destination: destinationAddress,
-          origin: originAddress,
-          time: Math.max(3, Math.ceil((stop.distanceKm || 0.3) * 12)),
-          estimatedTime: null,
-          stops: 0,
-          distance: Number(stop.distanceKm || 0).toFixed(1),
-          walkMinutes: Math.max(3, Math.ceil((stop.distanceKm || 0.3) * 12)),
-          fromStop: stop.stopName || 'Parada próxima',
-          toStop: destinationAddress,
-          mode: mode === 'metro' ? 'METRO' : 'BUS',
-          source: 'Mobilibus/SEMOB',
-          instruction: `Vá até ${stop.stopName || 'uma parada próxima'} para consultar linhas disponíveis`,
-          tripId: null,
-          isLive: false,
-          isStopFallback: true,
-          lat: stop.lat,
-          lon: stop.lon,
-          
-          nearestStopName: stop.stopName || 'Parada próxima',
-          nearestStopLat: stop.lat,
-          nearestStopLon: stop.lon,
+    const realtimeDataPromise =
+      mode === 'bus'
+        ? getRealtimeVehicles(signal)
+        : Promise.resolve([]);
+
+    const [nearbyStops, realtimeData] = await Promise.all([
+      nearbyStopsPromise,
+      realtimeDataPromise,
+    ]);
+
+    window.__lastOriginCoords = originCoords;
+    window.__lastDestinationCoords = destCoords;
+    window.__lastOriginAddress = originAddress;
+    window.__lastDestinationAddress = destinationAddress;
+    window.__lastNearbyStops = nearbyStops;
+    window.__lastSearchMode = mode;
+    window.__lastSearchType = mode === 'bus' ? 'route' : mode;
+
+    let alreadyShowedFastResult = false;
+
+    if (mode === 'bus') {
+      const fastLiveRoutes = buildLiveBusRoutes(
+        realtimeData,
+        originCoords,
+        destCoords,
+        originAddress,
+        destinationAddress,
+        nearbyStops
+      );
+
+      if (fastLiveRoutes.length > 0) {
+        const fastRoutesWithStops = fastLiveRoutes.map((route) => ({
+          ...route,
           nearbyStops,
         }));
+
+        window.__lastOtpRoutes = [];
+
+        setRealtimeVehicles(realtimeData);
+        setRoutes(fastRoutesWithStops);
+        setLoading(false);
+
+        alreadyShowedFastResult = true;
+      }
+    }
+
+    let transitRoute = [];
+
+    try {
+      transitRoute = await getTransportPlan(
+        originCoords,
+        destCoords,
+        signal,
+        mode
+      );
+    } catch (error) {
+      const msg = String(error?.message || error || '');
+
+      const isAbort =
+        error?.name === 'AbortError' ||
+        msg.toLowerCase().includes('aborted') ||
+        msg.toLowerCase().includes('signal is aborted');
+
+      if (!isAbort) {
+        console.warn('[Mobilibus OTP plan]', msg);
       }
 
-      // Fallback para caminhada: se a API não retornou nada, calcular localmente
-      if (mode === 'walk' && combined.length === 0) {
-        const distKm = calcDist(originCoords, destCoords);
-        const walkMinutes = Math.ceil((distKm / 5) * 60); // ~5 km/h
-        combined = [{
-          id: 'walk_local',
-          line: 'A pé',
-          routeId: 'WALK',
-          destination: destinationAddress,
-          origin: originAddress,
-          time: walkMinutes,
-          estimatedTime: walkMinutes,
-          stops: 0,
-          distance: distKm.toFixed(1),
-          walkMinutes,
-          fromStop: originAddress,
-          toStop: destinationAddress,
-          mode: 'WALK',
-          instruction: `Caminhe ${distKm.toFixed(1)} km (~${walkMinutes} min) até o destino`,
-          tripId: null,
-          isWalk: true,
-          isLive: false,
-          nearbyStops,
-        }];
-      }
-      // Anexa paradas próximas em todas as rotas para o Leaflet mostrar mais contexto no mapa.
-      combined = combined.map((route) => ({
-        ...route,
+      transitRoute = [];
+    }
+
+    let finalCombined = combineRoutes(
+      transitRoute,
+      nearbyStops,
+      originAddress,
+      destinationAddress,
+      mode
+    );
+
+    window.__lastOtpRoutes = finalCombined;
+
+    if (mode === 'bus' && finalCombined.length === 0) {
+      finalCombined = buildLiveBusRoutes(
+        realtimeData,
+        originCoords,
+        destCoords,
+        originAddress,
+        destinationAddress,
+        nearbyStops
+      );
+    }
+
+    if (mode !== 'walk' && finalCombined.length === 0 && nearbyStops.length > 0) {
+      finalCombined = nearbyStops.slice(0, 5).map((stop, index) => ({
+        id: `semob_stop_${stop.stopId || index}`,
+        line: mode === 'metro' ? 'Estação/parada próxima' : 'Parada próxima',
+        routeId: stop.stopId || 'SEMOB_STOP',
+        destination: destinationAddress,
+        origin: originAddress,
+        time: Math.max(3, Math.ceil((stop.distanceKm || 0.3) * 12)),
+        estimatedTime: null,
+        stops: 0,
+        distance: Number(stop.distanceKm || 0).toFixed(1),
+        walkMinutes: Math.max(3, Math.ceil((stop.distanceKm || 0.3) * 12)),
+        fromStop: stop.stopName || 'Parada próxima',
+        toStop: destinationAddress,
+        mode: mode === 'metro' ? 'METRO' : 'BUS',
+        source: 'Mobilibus/SEMOB',
+        instruction: `Vá até ${stop.stopName || 'uma parada próxima'} para consultar linhas disponíveis`,
+        tripId: null,
+        isLive: false,
+        isStopFallback: true,
+        lat: stop.lat,
+        lon: stop.lon,
+        nearestStopName: stop.stopName || 'Parada próxima',
+        nearestStopLat: stop.lat,
+        nearestStopLon: stop.lon,
         nearbyStops,
       }));
-
-      setRoutes(combined.map((r) => {
-        const rv = findBestVehicleForRoute(realtimeData, r);
-
-        if (rv) {
-          const etaMin = getEtaMinutes(rv.eta);
-          const snappedPosition = snapVehicleToRoute(rv, r);
-
-          return {
-            ...r,
-            time: etaMin ?? r.time,
-            realTimeGPS: {
-              lat: snappedPosition?.lat ?? Number(rv.lat),
-              lon: snappedPosition?.lon ?? Number(rv.lon),
-
-              rawLat: Number(rv.lat),
-              rawLon: Number(rv.lon),
-
-              snappedToRoute: snappedPosition?.snappedToRoute || false,
-              snapDistanceKm: snappedPosition?.snapDistanceKm ?? null,
-
-              bearing: rv.bearing,
-              speed: rv.speed,
-              eta: rv.eta,
-              horario: rv.horario || rv.updatedAt,
-              updatedAt: rv.updatedAt || rv.horario,
-              numero: rv.numero,
-              line: rv.line,
-              sentido: rv.sentido || null,
-              operadora: getVehicleOperatorName(rv),
-            },
-            isLive: true,
-          };
-        }
-
-        return r.isLive ? r : { ...r, isLive: false };
-      }));
-    } catch (err) {
-      if (!axios.isCancel(err) && err.name !== 'AbortError') setError(err.message || 'Erro ao buscar rotas');
-    } finally {
-      setLoading(false); isSearchingRef.current = false;
     }
-  };
 
+    if (mode === 'walk' && finalCombined.length === 0) {
+      const distKm = calcDist(originCoords, destCoords);
+      const walkMinutes = Math.ceil((distKm / 5) * 60);
+
+      finalCombined = [{
+        id: 'walk_local',
+        line: 'A pé',
+        routeId: 'WALK',
+        destination: destinationAddress,
+        origin: originAddress,
+        time: walkMinutes,
+        estimatedTime: walkMinutes,
+        stops: 0,
+        distance: distKm.toFixed(1),
+        walkMinutes,
+        fromStop: originAddress,
+        toStop: destinationAddress,
+        mode: 'WALK',
+        instruction: `Caminhe ${distKm.toFixed(1)} km (~${walkMinutes} min) até o destino`,
+        tripId: null,
+        isWalk: true,
+        isLive: false,
+        nearbyStops,
+      }];
+    }
+
+    finalCombined = finalCombined.map((route) => ({
+      ...route,
+      nearbyStops,
+    }));
+
+    const finalRoutes = finalCombined.map((r) => {
+      const rv = findBestVehicleForRoute(realtimeData, r);
+
+      if (rv) {
+        const etaMin = getEtaMinutes(rv.eta);
+        const snappedPosition = snapVehicleToRoute(rv, r);
+
+        const stopForEta = {
+          lat: r.nearestStopLat,
+          lon: r.nearestStopLon,
+        };
+
+        const etaToNearestStopMinutes =
+          estimateBusEtaToStop(rv, stopForEta) ??
+          etaMin ??
+          r.etaToNearestStopMinutes ??
+          r.time;
+
+        return {
+          ...r,
+          time: etaToNearestStopMinutes,
+          etaToNearestStopMinutes,
+          realTimeGPS: {
+            lat: snappedPosition?.lat ?? Number(rv.lat),
+            lon: snappedPosition?.lon ?? Number(rv.lon),
+
+            rawLat: Number(rv.lat),
+            rawLon: Number(rv.lon),
+
+            snappedToRoute: snappedPosition?.snappedToRoute || false,
+            snapDistanceKm: snappedPosition?.snapDistanceKm ?? null,
+
+            bearing: rv.bearing,
+            speed: rv.speed,
+            eta: rv.eta,
+            horario: rv.horario || rv.updatedAt,
+            updatedAt: rv.updatedAt || rv.horario,
+            numero: rv.numero,
+            line: rv.line,
+            sentido: rv.sentido || null,
+            operadora: getVehicleOperatorName(rv),
+          },
+          gpsUpdatedMinutes: getGpsAgeMinutes(rv),
+          isLive: true,
+        };
+      }
+
+      return r.isLive ? r : { ...r, isLive: false };
+    });
+
+    if (finalRoutes.length > 0 || !alreadyShowedFastResult) {
+      setRealtimeVehicles(realtimeData);
+      setRoutes(finalRoutes);
+    }
+  } catch (err) {
+    if (!axios.isCancel(err) && err.name !== 'AbortError') {
+      setError(err.message || 'Erro ao buscar rotas');
+    }
+  } finally {
+    setLoading(false);
+    isSearchingRef.current = false;
+  }
+};
   useEffect(() => {
     const refresh = async () => {
       try {

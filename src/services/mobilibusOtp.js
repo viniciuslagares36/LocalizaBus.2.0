@@ -24,7 +24,7 @@ export async function planMobilibusRoute({
   });
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const timeout = setTimeout(() => controller.abort(), 5000);
 
   if (signal) {
     signal.addEventListener('abort', () => controller.abort(), { once: true });
