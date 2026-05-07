@@ -2277,9 +2277,13 @@ const canSearch = selectedMode === 'bus'
 
       {/* SEARCH */}
       <div ref={searchRef} className="max-w-2xl mx-auto px-4 -mt-14 md:-mt-20 pb-24 relative z-10">
-        <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, ...spring }}
-          className="bg-[var(--card-bg)] backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-2xl border border-[var(--border)] overflow-visible"
-          <div className="px-6 md:px-8 py-4 md:py-5 border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent)]/5 to-transparent">
+<motion.div
+  initial={{ opacity: 0, y: 24 }}
+  animate={{ opacity: 1, y: 0 }}
+  transition={{ delay: 0.1, ...spring }}
+  className="bg-[var(--card-bg)] backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-2xl border border-[var(--border)] overflow-visible"
+>
+  <div className="px-6 md:px-8 py-4 md:py-5 border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent)]/5 to-transparent">
             <h2 className="text-base md:text-lg font-semibold text-[var(--text-primary)] tracking-tight">Planeje sua rota</h2>
             <p className="text-xs md:text-sm text-[var(--text-secondary)] mt-0.5">Busque por ônibus, metrô e caminhada</p>
           </div>
