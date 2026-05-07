@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, Component } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, Component } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Bus, Footprints, MapPin, Train, Clock, ArrowRight,
@@ -931,6 +931,14 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
       text.includes('bairro')
     ) {
       return 'volta';
+    }
+
+    // Fallback quando a API não informa sentido textual.
+    // Divide os veículos em dois grupos opostos usando o bearing do GPS.
+    // Funciona bem para a visão de consulta por linha: Ida x Volta.
+    const bearing = getVehicleBearing(vehicle);
+    if (bearing != null) {
+      return bearing >= 45 && bearing <= 225 ? 'ida' : 'volta';
     }
 
     return 'indefinido';
@@ -1877,6 +1885,109 @@ const RouteResult = ({ routes, origin, destination, loading }) => {
   );
 };
 
+
+// ─── LINE DIRECTION FILTER ───────────────────────
+const LineDirectionFilter = ({ routes, activeFilter, onChange }) => {
+  const counts = useMemo(() => {
+    const base = {
+      all: routes?.length || 0,
+      ida: 0,
+      volta: 0,
+      indefinido: 0,
+    };
+
+    (routes || []).forEach((route) => {
+      const type = route.directionType || 'indefinido';
+      if (type === 'ida') base.ida += 1;
+      else if (type === 'volta') base.volta += 1;
+      else base.indefinido += 1;
+    });
+
+    return base;
+  }, [routes]);
+
+  if (!routes?.some((route) => route.isLineSearch)) return null;
+
+  const options = [
+    {
+      key: 'all',
+      label: 'Todos',
+      count: counts.all,
+      description: 'ida e volta',
+      className: 'border-[var(--border)] bg-[var(--input-bg)] text-[var(--text-primary)]',
+    },
+    {
+      key: 'ida',
+      label: 'Ida',
+      count: counts.ida,
+      description: 'indo para o destino',
+      className: 'border-blue-400/40 bg-blue-500/10 text-blue-500 dark:text-blue-300',
+    },
+    {
+      key: 'volta',
+      label: 'Volta',
+      count: counts.volta,
+      description: 'voltando da rota',
+      className: 'border-lime-400/40 bg-lime-400/10 text-lime-600 dark:text-lime-300',
+    },
+  ];
+
+  if (counts.indefinido > 0) {
+    options.push({
+      key: 'indefinido',
+      label: 'Sem sentido',
+      count: counts.indefinido,
+      description: 'GPS sem direção',
+      className: 'border-slate-400/30 bg-slate-500/10 text-[var(--text-secondary)]',
+    });
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mt-5 rounded-2xl border border-[var(--border)] bg-[var(--input-bg)]/70 p-3"
+    >
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+            Consulta por linha
+          </p>
+          <p className="text-xs font-semibold text-[var(--text-secondary)]">
+            Escolha se quer ver ônibus indo ou voltando da rota.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {options.map((option) => {
+          const active = activeFilter === option.key;
+
+          return (
+            <motion.button
+              key={option.key}
+              type="button"
+              whileTap={{ scale: 0.96 }}
+              onClick={() => onChange(option.key)}
+              className={`rounded-xl border px-3 py-2 text-left transition-all duration-200 ${option.className} ${active ? 'ring-2 ring-[var(--accent)]/40 shadow-lg' : 'opacity-75 hover:opacity-100'}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-black tracking-tight">{option.label}</span>
+                <span className="rounded-full bg-black/10 px-2 py-0.5 text-[10px] font-black dark:bg-white/10">
+                  {option.count}
+                </span>
+              </div>
+              <p className="mt-0.5 text-[10px] font-semibold opacity-70">
+                {option.description}
+              </p>
+            </motion.button>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+};
+
 // ─── THEME TOGGLE ────────────────────────────────
 const ThemeToggle = ({ dark, onToggle }) => (
   <motion.button onClick={onToggle} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} aria-label="Alternar tema"
@@ -1899,6 +2010,7 @@ function App() {
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
   const [selectedMode, setSelectedMode] = useState('bus');
+  const [lineDirectionFilter, setLineDirectionFilter] = useState('all');
   const [hasSearched, setHasSearched] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
   const [dark, setDark] = useState(() => { try { return localStorage.getItem('lb-theme') === 'dark'; } catch { return false; } });
@@ -2033,6 +2145,7 @@ const handleSearch = async () => {
   const safeD = sanitizeInput(destination);
 
   setHasSearched(true);
+  setLineDirectionFilter('all');
 
   // Fecha o mapa inicial assim que o usuário clicar em "Buscar rota agora"
   setShowPickerMap(false);
@@ -2072,6 +2185,11 @@ const handleSearch = async () => {
 
   await searchRoute(safeO, safeD, selectedMode);
 };
+
+const lineSearchActive = routes.some((route) => route.isLineSearch);
+const visibleRoutes = lineSearchActive && lineDirectionFilter !== 'all'
+  ? routes.filter((route) => (route.directionType || 'indefinido') === lineDirectionFilter)
+  : routes;
 
 const safeOriginForSearch = sanitizeInput(origin);
 const safeDestinationForSearch = sanitizeInput(destination);
@@ -2153,7 +2271,7 @@ const canSearch = selectedMode === 'bus'
               <LocationInput
   value={origin}
   onChange={setOrigin}
-  placeholder="Ponto de partida"
+  placeholder="Ponto de partida ou número da linha"
   icon={MapPin}
   onDetectLocation={() => detectLocation(setOrigin)}
   detectingLocation={locationLoading}
@@ -2163,7 +2281,7 @@ const canSearch = selectedMode === 'bus'
               <LocationInput
   value={destination}
   onChange={setDestination}
-  placeholder="Para onde você vai?"
+  placeholder="Destino ou número da linha"
   icon={Search}
   onDetectLocation={() => detectLocation(setDestination)}
   detectingLocation={locationLoading}
@@ -2249,8 +2367,15 @@ const canSearch = selectedMode === 'bus'
             </motion.button>
 
 {(hasSearched || routes.length > 0) && (
-  <RouteResultRefatorado
-    routes={routes}
+  <>
+    <LineDirectionFilter
+      routes={routes}
+      activeFilter={lineDirectionFilter}
+      onChange={setLineDirectionFilter}
+    />
+
+    <RouteResultRefatorado
+      routes={visibleRoutes}
     origin={origin}
     destination={destination}
     loading={loading}
@@ -2260,8 +2385,9 @@ const canSearch = selectedMode === 'bus'
     pickedLocation={pickedLocation}
     onPickLocation={handlePickLocation}
     pickingLocation={pickingLocation}
-    onTogglePickingLocation={() => setPickingLocation((value) => !value)}
-  />
+      onTogglePickingLocation={() => setPickingLocation((value) => !value)}
+    />
+  </>
 )}
 
             {error && (
