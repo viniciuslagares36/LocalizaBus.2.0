@@ -26,6 +26,99 @@ const busIcon = createIcon(BUS_ICON_URL, 20, 20);
 const boardingStopIcon = createIcon(BUS_STOP_ICON_URL, 20, 20);
 const nearbyStopIcon = createIcon(BUS_STOP_ICON_URL, 14, 14);
 
+const getLineBadgeColors = (line) => {
+  const value = String(line || '').trim();
+
+  if (value.startsWith('0.')) {
+    return { background: '#a3e635', color: '#111827', border: '#bef264' };
+  }
+
+  if (value.startsWith('1')) {
+    return { background: '#22c55e', color: '#ffffff', border: '#86efac' };
+  }
+
+  if (value.startsWith('2')) {
+    return { background: '#06b6d4', color: '#ffffff', border: '#67e8f9' };
+  }
+
+  if (value.startsWith('3')) {
+    return { background: '#8b5cf6', color: '#ffffff', border: '#c4b5fd' };
+  }
+
+  if (value.startsWith('4')) {
+    return { background: '#a3e635', color: '#111827', border: '#d9f99d' };
+  }
+
+  if (value.startsWith('5')) {
+    return { background: '#f97316', color: '#111827', border: '#fdba74' };
+  }
+
+  if (value.startsWith('8') || value.startsWith('9')) {
+    return { background: '#22d3ee', color: '#111827', border: '#a5f3fc' };
+  }
+
+  return { background: '#94a3b8', color: '#0f172a', border: '#e2e8f0' };
+};
+
+const escapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+const createBusLineBadgeIcon = (line, isSelected = false, directionType = '') => {
+  const colors = getLineBadgeColors(line);
+  const safeLine = escapeHtml(line || 'BUS');
+  const ringColor =
+    directionType === 'ida'
+      ? '#38bdf8'
+      : directionType === 'volta'
+        ? '#84cc16'
+        : '#ffffff';
+
+  return L.divIcon({
+    className: '',
+    html: `
+      <div style="
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: ${isSelected ? '58px' : '48px'};
+        height: ${isSelected ? '28px' : '24px'};
+        padding: 0 8px;
+        border-radius: 4px;
+        background: ${colors.background};
+        color: ${colors.color};
+        border: 2px solid ${ringColor};
+        box-shadow: 0 7px 16px rgba(0,0,0,.34);
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: ${isSelected ? '13px' : '11px'};
+        font-weight: 900;
+        line-height: 1;
+        letter-spacing: -0.03em;
+        white-space: nowrap;
+      ">
+        ${safeLine}
+      </div>
+      <div style="
+        width: 0;
+        height: 0;
+        border-left: 5px solid transparent;
+        border-right: 5px solid transparent;
+        border-top: 6px solid ${colors.background};
+        margin: -1px auto 0;
+        filter: drop-shadow(0 3px 2px rgba(0,0,0,.25));
+      "></div>
+    `,
+    iconSize: [isSelected ? 62 : 52, isSelected ? 36 : 32],
+    iconAnchor: [isSelected ? 31 : 26, isSelected ? 34 : 30],
+    popupAnchor: [0, -30],
+  });
+};
+
 const userPickIcon = L.divIcon({
   className: '',
   html: `
@@ -33,7 +126,7 @@ const userPickIcon = L.divIcon({
       width: 34px;
       height: 34px;
       border-radius: 999px 999px 999px 4px;
-      background: '#0a84ff';
+      background: #00e5ff;
       transform: rotate(-45deg);
       border: 3px solid white;
       box-shadow: 0 8px 22px rgba(0,0,0,.35);
@@ -44,7 +137,7 @@ const userPickIcon = L.divIcon({
       <div style="
         transform: rotate(45deg);
         font-size: 16px;
-      "></div>
+      ">📍</div>
     </div>
   `,
   iconSize: [34, 34],
@@ -558,7 +651,7 @@ export default function LeafletMap({
       radius={8}
       pathOptions={{
         color: '#ffffff',
-        fillColor: '#0a84ff',
+        fillColor: '#00e5ff',
         fillOpacity: 1,
         weight: 3,
         opacity: 1,
@@ -585,7 +678,7 @@ export default function LeafletMap({
         [Number(boardingStop.lat), Number(boardingStop.lon)],
       ]}
       pathOptions={{
-        color: '#0a84ff',
+        color: '#00e5ff',
         weight: 4,
         opacity: 0.95,
         dashArray: '10 8',
@@ -718,8 +811,8 @@ export default function LeafletMap({
           center={[Number(marker.lat), Number(marker.lon)]}
           radius={18}
           pathOptions={{
-            color: '#0a84ff',
-            fillColor: '#0a84ff',
+            color: '#00e5ff',
+            fillColor: '#00e5ff',
             fillOpacity: 0.16,
             weight: 3,
             opacity: 0.95,
@@ -729,7 +822,7 @@ export default function LeafletMap({
 
       <Marker
         position={[Number(marker.lat), Number(marker.lon)]}
-        icon={busIcon || fallbackBusIcon}
+        icon={createBusLineBadgeIcon(marker.line, isSelected, marker.directionType)}
       >
         <Popup>
           <div style={{ minWidth: 230 }}>
@@ -811,7 +904,7 @@ export default function LeafletMap({
       fontWeight: 800,
       cursor: 'pointer',
       background: pickingLocation
-        ? '#0a84ff'
+        ? '#00e5ff'
         : isDark
           ? 'rgba(15,23,42,.92)'
           : 'rgba(255,255,255,.96)',
@@ -827,7 +920,7 @@ export default function LeafletMap({
     }}
     title="Escolher local no mapa"
   >
-    <span></span>
+    <span>📍</span>
     <span>{pickingLocation ? 'Clique no mapa' : 'Escolher no mapa'}</span>
   </button>
 )}

@@ -1678,6 +1678,16 @@ const LocationInput = ({
   // Adicionar na função fetchSuggestions do LocationInput em App.jsx
   const fetchSuggestions = async (q) => {
     const safe = sanitizeInput(q);
+
+    // Se o usuário digitou número de linha (ex: 400, 401, 411.2),
+    // não abre sugestões de endereço. Isso evita o app transformar a linha
+    // em destino/parada e quebrar a consulta por número.
+    if (isBusLineSearch(safe)) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
     if (!safe || safe.length < 3) { setSuggestions([]); return; }
 
     abortRef.current?.abort();
@@ -2143,6 +2153,8 @@ function App() {
 const handleSearch = async () => {
   const safeO = sanitizeInput(origin);
   const safeD = sanitizeInput(destination);
+  const originIsLine = isBusLineSearch(safeO);
+  const destinationIsLine = isBusLineSearch(safeD);
 
   setHasSearched(true);
   setLineDirectionFilter('all');
@@ -2152,25 +2164,30 @@ const handleSearch = async () => {
   setPickingLocation(false);
 
   if (selectedMode === 'bus') {
-    // Consulta pura por linha: usuário digitou só 400/401/411.2 em qualquer campo.
-    if (isBusLineSearch(safeO) && !safeD) {
+    // Consulta por linha pura.
+    // Importante: se os dois campos forem números de linha, usa o primeiro campo
+    // e NÃO tenta tratar o segundo como destino/parada.
+    if (originIsLine && (!safeD || destinationIsLine)) {
+      setDestination('');
       await searchBusLine(safeO, `Linha ${safeO}`, 'Consulta de linha');
       return;
     }
 
-    if (isBusLineSearch(safeD) && !safeO) {
+    if (destinationIsLine && !safeO) {
+      setOrigin(safeD);
+      setDestination('');
       await searchBusLine(safeD, `Linha ${safeD}`, 'Consulta de linha');
       return;
     }
 
-    // Linha + destino: exemplo "400" -> "Rodoviária".
-    if (isBusLineSearch(safeO) && safeD) {
+    // Linha + destino: exemplo "401" -> "Rodoviária".
+    if (originIsLine && safeD && !destinationIsLine) {
       await searchBusLineWithDestination(safeO, safeD);
       return;
     }
 
-    // Origem + linha: exemplo "EPCT 85.3 Sul" -> "400".
-    if (safeO && isBusLineSearch(safeD)) {
+    // Origem + linha: exemplo "EPCT 85.3 Sul" -> "401".
+    if (safeO && !originIsLine && destinationIsLine) {
       await searchBusLineFromOrigin(safeD, safeO);
       return;
     }
