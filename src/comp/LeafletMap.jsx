@@ -33,7 +33,7 @@ const userPickIcon = L.divIcon({
       width: 34px;
       height: 34px;
       border-radius: 999px 999px 999px 4px;
-      background: #0a84ff;
+      background: '#0a84ff';
       transform: rotate(-45deg);
       border: 3px solid white;
       box-shadow: 0 8px 22px rgba(0,0,0,.35);
@@ -585,7 +585,7 @@ export default function LeafletMap({
         [Number(boardingStop.lat), Number(boardingStop.lon)],
       ]}
       pathOptions={{
-        color: #0a84ff',
+        color: '#0a84ff',
         weight: 4,
         opacity: 0.95,
         dashArray: '10 8',
