@@ -26,6 +26,34 @@ const busIcon = createIcon(BUS_ICON_URL, 20, 20);
 const boardingStopIcon = createIcon(BUS_STOP_ICON_URL, 20, 20);
 const nearbyStopIcon = createIcon(BUS_STOP_ICON_URL, 14, 14);
 
+const userPickIcon = L.divIcon({
+  className: '',
+  html: `
+    <div style="
+      width: 34px;
+      height: 34px;
+      border-radius: 999px 999px 999px 0;
+      background: #0a84ff;
+      transform: rotate(-45deg);
+      border: 3px solid #ffffff;
+      box-shadow: 0 8px 18px rgba(0,0,0,.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    ">
+      <div style="
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
+        background: #ffffff;
+      "></div>
+    </div>
+  `,
+  iconSize: [34, 34],
+  iconAnchor: [17, 34],
+  popupAnchor: [0, -34],
+});
+
 const getLineBadgeColors = (line) => {
   const value = String(line || '').trim();
 
