@@ -68,7 +68,7 @@ const escapeHtml = (value) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 
-const createBusLineBadgeIcon = (line, isSelected = false, directionType = '') => {
+const createBusWithLineBadgeIcon = (line, isSelected = false, directionType = '') => {
   const colors = getLineBadgeColors(line);
   const safeLine = escapeHtml(line || 'BUS');
   const ringColor =
@@ -78,110 +78,87 @@ const createBusLineBadgeIcon = (line, isSelected = false, directionType = '') =>
         ? '#84cc16'
         : '#ffffff';
 
+  const badgeWidth = isSelected ? 58 : 50;
+  const badgeHeight = isSelected ? 24 : 21;
+  const busSize = isSelected ? 34 : 28;
+  const iconWidth = Math.max(badgeWidth + 8, busSize + 18);
+  const iconHeight = badgeHeight + busSize + 10;
+
   return L.divIcon({
     className: '',
     html: `
       <div style="
         position: relative;
-        display: inline-flex;
+        width: ${iconWidth}px;
+        height: ${iconHeight}px;
+        display: flex;
+        flex-direction: column;
         align-items: center;
-        justify-content: center;
-        min-width: ${isSelected ? '58px' : '48px'};
-        height: ${isSelected ? '28px' : '24px'};
-        padding: 0 8px;
-        border-radius: 4px;
-        background: ${colors.background};
-        color: ${colors.color};
-        border: 2px solid ${ringColor};
-        box-shadow: 0 7px 16px rgba(0,0,0,.34);
-        font-family: Arial, Helvetica, sans-serif;
-        font-size: ${isSelected ? '13px' : '11px'};
-        font-weight: 900;
-        line-height: 1;
-        letter-spacing: -0.03em;
-        white-space: nowrap;
+        justify-content: flex-start;
+        pointer-events: auto;
       ">
-        ${safeLine}
+        <div style="
+          position: relative;
+          z-index: 2;
+          min-width: ${badgeWidth}px;
+          height: ${badgeHeight}px;
+          padding: 0 7px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 4px;
+          background: ${colors.background};
+          color: ${colors.color};
+          border: 2px solid ${ringColor};
+          box-shadow: 0 5px 12px rgba(0,0,0,.35);
+          font-family: Arial, Helvetica, sans-serif;
+          font-size: ${isSelected ? '13px' : '11px'};
+          font-weight: 900;
+          line-height: 1;
+          letter-spacing: -0.03em;
+          white-space: nowrap;
+        ">${safeLine}</div>
+
+        <div style="
+          position: relative;
+          z-index: 1;
+          width: 0;
+          height: 0;
+          border-left: 5px solid transparent;
+          border-right: 5px solid transparent;
+          border-top: 6px solid ${colors.background};
+          margin-top: -1px;
+          filter: drop-shadow(0 2px 2px rgba(0,0,0,.25));
+        "></div>
+
+        <div style="
+          position: relative;
+          z-index: 0;
+          margin-top: -1px;
+          width: ${busSize}px;
+          height: ${busSize}px;
+          border-radius: 999px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(15, 23, 42, .82);
+          border: 2px solid rgba(255,255,255,.9);
+          box-shadow: 0 8px 18px rgba(0,0,0,.38);
+        ">
+          <img src="${BUS_ICON_URL}" alt="Ã´nibus" style="
+            width: ${Math.round(busSize * 0.72)}px;
+            height: ${Math.round(busSize * 0.72)}px;
+            display: block;
+            object-fit: contain;
+          " />
+        </div>
       </div>
-      <div style="
-        width: 0;
-        height: 0;
-        border-left: 5px solid transparent;
-        border-right: 5px solid transparent;
-        border-top: 6px solid ${colors.background};
-        margin: -1px auto 0;
-        filter: drop-shadow(0 3px 2px rgba(0,0,0,.25));
-      "></div>
     `,
-    iconSize: [isSelected ? 62 : 52, isSelected ? 36 : 32],
-    iconAnchor: [isSelected ? 31 : 26, isSelected ? 34 : 30],
-    popupAnchor: [0, -30],
+    iconSize: [iconWidth, iconHeight],
+    iconAnchor: [iconWidth / 2, iconHeight - 2],
+    popupAnchor: [0, -iconHeight + 8],
   });
 };
-
-const userPickIcon = L.divIcon({
-  className: '',
-  html: `
-    <div style="
-      width: 34px;
-      height: 34px;
-      border-radius: 999px 999px 999px 4px;
-      background: #00e5ff;
-      transform: rotate(-45deg);
-      border: 3px solid white;
-      box-shadow: 0 8px 22px rgba(0,0,0,.35);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    ">
-      <div style="
-        transform: rotate(45deg);
-        font-size: 16px;
-      ">📍</div>
-    </div>
-  `,
-  iconSize: [34, 34],
-  iconAnchor: [17, 34],
-  popupAnchor: [0, -34],
-});
-
-const fallbackBusIcon = L.divIcon({
-  className: '',
-  html: `
-    <div style="
-      width: 20px;
-      height: 20px;
-      border-radius: 999px;
-      background: #2563eb;
-      color: white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 11px;
-      font-weight: 900;
-      border: 2px solid white;
-      box-shadow: 0 4px 12px rgba(0,0,0,.35);
-    ">🚌</div>
-  `,
-  iconSize: [20, 20],
-  iconAnchor: [10, 10],
-});
-
-const fallbackStopIcon = L.divIcon({
-  className: '',
-  html: `
-    <div style="
-      width: 12px;
-      height: 12px;
-      border-radius: 999px;
-      background: #16a34a;
-      border: 2px solid white;
-      box-shadow: 0 3px 8px rgba(0,0,0,.25);
-    "></div>
-  `,
-  iconSize: [12, 12],
-  iconAnchor: [6, 6],
-});
 
 const isValidCoord = (lat, lon) =>
   Number.isFinite(Number(lat)) && Number.isFinite(Number(lon));
@@ -218,7 +195,7 @@ const getStopsFromRoutes = (routes = []) => {
         line: route.line,
         vehicleNumber: route.realTimeGPS?.numero || '',
         etaMinutes: route.etaToNearestStopMinutes ?? route.time ?? null,
-        fromStop: route.fromStop || route.nearestStopName || 'Parada próxima',
+        fromStop: route.fromStop || route.nearestStopName || 'Parada prÃ³xima',
         toStop: route.toStop || route.destination || 'Destino',
         sentido: route.realTimeGPS?.sentido || route.sentido || null,
         isGpsOnly: route.isGpsOnly || false,
@@ -241,7 +218,7 @@ const getStopsFromRoutes = (routes = []) => {
         if (!map.has(key)) {
           map.set(key, {
             id: key,
-            name: stop.stopName || stop.name || 'Parada próxima',
+            name: stop.stopName || stop.name || 'Parada prÃ³xima',
             lat: Number(stop.lat),
             lon: Number(stop.lon),
             line: route.line,
@@ -340,16 +317,16 @@ const formatGpsUpdatedAt = (timestamp, now = Date.now()) => {
   }
 
   if (seconds < 60) {
-    return `Atualizado há ${seconds} seg`;
+    return `Atualizado hÃ¡ ${seconds} seg`;
   }
 
   const minutes = Math.floor(seconds / 60);
 
   if (minutes === 1) {
-    return 'Atualizado há 1 min';
+    return 'Atualizado hÃ¡ 1 min';
   }
 
-  return `Atualizado há ${minutes} min`;
+  return `Atualizado hÃ¡ ${minutes} min`;
 };
 function FollowSelectedTarget({ markers, routes, selectedRouteId }) {
   const map = useMap();
@@ -467,7 +444,7 @@ function VisibleDfStopsLayer({ stops = [], hiddenStopKeys = new Set() }) {
   return visibleStops.map((stop) => {
     const lat = Number(stop.lat ?? stop.position?.lat);
     const lon = Number(stop.lon ?? stop.position?.lon);
-    const name = stop.name || stop.stopName || 'Parada de ônibus';
+    const name = stop.name || stop.stopName || 'Parada de Ã´nibus';
 
     return (
       <Marker
@@ -479,7 +456,7 @@ function VisibleDfStopsLayer({ stops = [], hiddenStopKeys = new Set() }) {
           <div style={{ minWidth: 180 }}>
             <strong>{name}</strong>
             <br />
-            {stop.stopId ? `Código: ${stop.stopId}` : 'Parada oficial do DF'}
+            {stop.stopId ? `CÃ³digo: ${stop.stopId}` : 'Parada oficial do DF'}
             {stop.address ? (
               <>
                 <br />
@@ -627,7 +604,7 @@ export default function LeafletMap({
     <Popup>
       <strong>Local escolhido</strong>
       <br />
-      Arraste o balão ou clique em outro ponto do mapa.
+      Arraste o balÃ£o ou clique em outro ponto do mapa.
     </Popup>
   </Marker>
 )}
@@ -660,7 +637,7 @@ export default function LeafletMap({
       <Popup>
         <strong>Origem da busca</strong>
         <br />
-        Caminhe até a parada destacada
+        Caminhe atÃ© a parada destacada
       </Popup>
     </CircleMarker>
   </>
@@ -738,7 +715,7 @@ export default function LeafletMap({
       <Popup>
         <div style={{ minWidth: 230 }}>
           <strong>
-            {isBoarding ? 'Parada de embarque' : 'Parada próxima'}
+            {isBoarding ? 'Parada de embarque' : 'Parada prÃ³xima'}
           </strong>
 
           <br />
@@ -752,7 +729,7 @@ export default function LeafletMap({
           ) : null}
 
           <div style={{ marginTop: 10 }}>
-            <strong>Ônibus previstos:</strong>
+            <strong>Ã”nibus previstos:</strong>
 
             {passingRoutes.length ? (
               <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
@@ -770,14 +747,14 @@ export default function LeafletMap({
   Linha {route.line}
   {route.etaMinutes != null ? (
     <>
-      {' • '}
+      {' â€¢ '}
       {Number(route.etaMinutes) <= 1 ? 'AGORA' : `${route.etaMinutes} min`}
     </>
   ) : null}
 </div>
 
                     <div style={{ fontSize: 11, opacity: 0.82 }}>
-                      {route.fromStop} → {route.toStop}
+                      {route.fromStop} â†’ {route.toStop}
                     </div>
 
                     {route.sentido ? (
@@ -790,7 +767,7 @@ export default function LeafletMap({
               </div>
             ) : (
               <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
-                Nenhum ônibus previsto nesta busca.
+                Nenhum Ã´nibus previsto nesta busca.
               </div>
             )}
           </div>
@@ -822,11 +799,11 @@ export default function LeafletMap({
 
       <Marker
         position={[Number(marker.lat), Number(marker.lon)]}
-        icon={createBusLineBadgeIcon(marker.line, isSelected, marker.directionType)}
+        icon={createBusWithLineBadgeIcon(marker.line, isSelected, marker.directionType)}
       >
         <Popup>
           <div style={{ minWidth: 230 }}>
-            <strong>Linha {marker.line || 'ônibus'}</strong>
+            <strong>Linha {marker.line || 'Ã´nibus'}</strong>
 
             <br />
 
@@ -834,14 +811,14 @@ export default function LeafletMap({
               <span>{marker.itinerary}</span>
             ) : (
               <span>
-                {marker.fromStop || 'Origem'} → {marker.toStop || 'Destino'}
+                {marker.fromStop || 'Origem'} â†’ {marker.toStop || 'Destino'}
               </span>
             )}
 
             <div style={{ marginTop: 10 }}>
               {marker.vehicleNumber ? (
                 <>
-                  <strong>Veículo:</strong> {marker.vehicleNumber}
+                  <strong>VeÃ­culo:</strong> {marker.vehicleNumber}
                   <br />
                 </>
               ) : null}
@@ -876,7 +853,7 @@ export default function LeafletMap({
                 <>
                   <br />
                   <span style={{ opacity: 0.72 }}>
-                    Previsão estimada por GPS
+                    PrevisÃ£o estimada por GPS
                   </span>
                 </>
               ) : null}
@@ -920,7 +897,7 @@ export default function LeafletMap({
     }}
     title="Escolher local no mapa"
   >
-    <span>📍</span>
+    <span>ðŸ“</span>
     <span>{pickingLocation ? 'Clique no mapa' : 'Escolher no mapa'}</span>
   </button>
 )}
@@ -940,7 +917,7 @@ export default function LeafletMap({
           boxShadow: '0 4px 14px rgba(0,0,0,.18)',
         }}
       >
-{visibleMarkers.length} ônibus ao vivo • {(allStops?.length || routeStops.length)} paradas do DF
+{visibleMarkers.length} Ã´nibus ao vivo â€¢ {(allStops?.length || routeStops.length)} paradas do DF
       </div>
     </div>
   );
