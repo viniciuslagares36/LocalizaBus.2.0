@@ -361,6 +361,64 @@ const useRouteSearch = () => {
     const a = Math.sin(dLat / 2) ** 2 + Math.cos(p1.lat * Math.PI / 180) * Math.cos(p2.lat * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   };
+
+  const degToRad = (deg) => deg * Math.PI / 180;
+const radToDeg = (rad) => rad * 180 / Math.PI;
+
+const getBearingBetweenPoints = (from, to) => {
+  const lat1 = degToRad(Number(from.lat));
+  const lat2 = degToRad(Number(to.lat));
+  const dLon = degToRad(Number(to.lon) - Number(from.lon));
+
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x =
+    Math.cos(lat1) * Math.sin(lat2) -
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+
+  return (radToDeg(Math.atan2(y, x)) + 360) % 360;
+};
+
+const getAngleDiff = (a, b) => {
+  return Math.abs(((Number(a) - Number(b) + 540) % 360) - 180);
+};
+
+const getVehicleBearing = (vehicle) => {
+  const bearing = Number(
+    vehicle?.bearing ??
+    vehicle?.direcao ??
+    vehicle?.direction ??
+    vehicle?.heading
+  );
+
+  return Number.isFinite(bearing) ? bearing : null;
+};
+
+const isVehicleHeadingToStop = (vehicle, stop) => {
+  if (!vehicle?.lat || !vehicle?.lon || !stop?.lat || !stop?.lon) {
+    return false;
+  }
+
+  const vehicleBearing = getVehicleBearing(vehicle);
+
+  if (vehicleBearing == null) {
+    return true;
+  }
+
+  const bearingToStop = getBearingBetweenPoints(
+    {
+      lat: Number(vehicle.lat),
+      lon: Number(vehicle.lon),
+    },
+    {
+      lat: Number(stop.lat),
+      lon: Number(stop.lon),
+    }
+  );
+
+  const diff = getAngleDiff(vehicleBearing, bearingToStop);
+
+  return diff <= 100;
+};
   const snapVehicleToRoute = (vehicle, route) => {
     if (!vehicle?.lat || !vehicle?.lon) {
       return null;
@@ -439,7 +497,15 @@ const useRouteSearch = () => {
       lon: Number(route.nearestStopLon),
     };
 
-    return matching
+    const headingToStop = matching.filter((vehicle) =>
+      isVehicleHeadingToStop(vehicle, stopCoords)
+    );
+
+    // Se nenhum veículo da linha está vindo na direção da parada,
+    // provavelmente o ônibus já passou ou está no sentido contrário.
+    if (!headingToStop.length) return null;
+
+    return headingToStop
       .map((vehicle) => {
         const vehicleCoords = {
           lat: Number(vehicle.lat),
@@ -536,15 +602,21 @@ const useRouteSearch = () => {
       .slice(0, limit);
   };
 
-  const getBestUserStopForVehicle = (vehicle, userStops) => {
-    const stops = getTargetUserStops(userStops, 3);
+const getBestUserStopForVehicle = (vehicle, userStops) => {
+  const stops = getTargetUserStops(userStops, 3);
 
-    if (!stops.length) return null;
+  if (!stops.length) return null;
 
-    // Por enquanto, usa a parada mais próxima do usuário/origem.
-    // Depois dá pra evoluir para filtrar pela linha/sentido.
-    return stops[0];
-  };
+  const validStops = stops.filter((stop) =>
+    isVehicleHeadingToStop(vehicle, stop)
+  );
+
+  if (!validStops.length) {
+    return null;
+  }
+
+  return validStops[0];
+};
 
   const getNearbyStops = async (coords) => {
     try {
@@ -679,41 +751,46 @@ const useRouteSearch = () => {
           isLineAllowedAtOrigin(vehicle.line, allowedOriginLines)
         );
       })
-      .map((vehicle) => {
-        const vehicleCoords = {
-          lat: Number(vehicle.lat),
-          lon: Number(vehicle.lon),
-        };
+.map((vehicle) => {
+  const vehicleCoords = {
+    lat: Number(vehicle.lat),
+    lon: Number(vehicle.lon),
+  };
 
-        const distanceToOriginKm = calcDist(originCoords, vehicleCoords);
+  const distanceToOriginKm = calcDist(originCoords, vehicleCoords);
 
-        const distanceToDestinationKm = calcDist(destinationCoords, vehicleCoords);
+  const distanceToDestinationKm = calcDist(destinationCoords, vehicleCoords);
 
-        const gpsUpdatedMinutes = getGpsAgeMinutes(vehicle);
+  const gpsUpdatedMinutes = getGpsAgeMinutes(vehicle);
 
-        const targetStop = getBestUserStopForVehicle(vehicle, userTargetStops);
+  const targetStop = getBestUserStopForVehicle(vehicle, userTargetStops);
 
-        const distanceToTargetStopKm = targetStop
-          ? calcDist(vehicleCoords, {
-            lat: Number(targetStop.lat),
-            lon: Number(targetStop.lon),
-          })
-          : distanceToOriginKm;
+  if (!targetStop) {
+    return null;
+  }
 
-        const etaToNearestStopMinutes = targetStop
-          ? estimateBusEtaToStop(vehicle, targetStop)
-          : null;
+  const distanceToTargetStopKm = calcDist(vehicleCoords, {
+    lat: Number(targetStop.lat),
+    lon: Number(targetStop.lon),
+  });
 
-        return {
-          ...vehicle,
-          distanceToOriginKm,
-          distanceToDestinationKm,
-          distanceToTargetStopKm,
-          gpsUpdatedMinutes,
-          targetStop,
-          etaToNearestStopMinutes,
-        };
-      })
+  const etaToNearestStopMinutes = estimateBusEtaToStop(vehicle, targetStop);
+
+  if (etaToNearestStopMinutes == null) {
+    return null;
+  }
+
+  return {
+    ...vehicle,
+    distanceToOriginKm,
+    distanceToDestinationKm,
+    distanceToTargetStopKm,
+    gpsUpdatedMinutes,
+    targetStop,
+    etaToNearestStopMinutes,
+  };
+})
+.filter(Boolean)
       // Primeiro mostra ônibus mais perto da parada/origem do usuário.
       .sort((a, b) => {
         const etaA = a.etaToNearestStopMinutes ?? 9999;
@@ -737,9 +814,13 @@ const useRouteSearch = () => {
 
       const etaToNearestStopMinutes = vehicle.etaToNearestStopMinutes;
 
-      const walkMinutes = targetStop?.distanceKm
-        ? Math.max(1, Math.ceil((Number(targetStop.distanceKm) / 4.8) * 60))
-        : Math.max(1, Math.ceil((vehicle.distanceToOriginKm / 4.8) * 60));
+      const userAtStop = Number(targetStop?.distanceKm || 999) <= 0.08;
+
+      const walkMinutes = userAtStop
+        ? 0
+        : targetStop?.distanceKm
+          ? Math.max(1, Math.ceil((Number(targetStop.distanceKm) / 4.8) * 60))
+          : 0;
 
       const stopName =
         targetStop?.stopName ||
@@ -767,14 +848,14 @@ const useRouteSearch = () => {
         distance: Number(vehicle.distanceToTargetStopKm || vehicle.distanceToOriginKm || 0).toFixed(1),
         walkMinutes,
 
-        fromStop: stopName,
+        fromStop: userAtStop ? `Você está na parada ${stopName}` : stopName,
         toStop: destinationAddress,
 
         mode: 'BUS',
         source: 'DFTrans GPS / DF no Ponto',
-        instruction: targetStop
-          ? `Linha ${vehicle.line} estimada para passar em ${stopName} em cerca de ${etaToNearestStopMinutes ?? '--'} min. Sentido: ${vehicle.sentido || 'não informado'}. Velocidade: ${Math.round(vehicle.speed || vehicle.velocidade || 0)} km/h.`
-          : `Linha ${vehicle.line} detectada ao vivo pela ${operatorName}. Sentido: ${vehicle.sentido || 'não informado'}.`,
+        instruction: userAtStop
+          ? `Você já está na parada. Linha ${vehicle.line} estimada para passar em cerca de ${etaToNearestStopMinutes ?? '--'} min. Sentido: ${vehicle.sentido || 'não informado'}.`
+          : `Caminhe até ${stopName}. Linha ${vehicle.line} estimada para passar em cerca de ${etaToNearestStopMinutes ?? '--'} min. Sentido: ${vehicle.sentido || 'não informado'}.`,
 
         tripId: null,
         isLive: true,
@@ -1273,7 +1354,6 @@ if (rv) {
   };
 };
 
-// ─── LOCATION INPUT ──────────────────────────────
 // ─── LOCATION INPUT ──────────────────────────────
 const LocationInput = ({
   value,
