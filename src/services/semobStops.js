@@ -167,3 +167,82 @@ export const findLocalDfPlaces = async (query, { limit = 12 } = {}) => {
     })
     .slice(0, limit);
 };
+
+
+export const normalizeLineForValidation = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .replace('linha', '')
+    .replace(/[^0-9a-z.]/g, '')
+    .replace(/^0+(?=\d)/, '')
+    .trim();
+
+export const getSemobStopRoutes = async (stopId) => {
+  if (!stopId) return [];
+
+  try {
+    const response = await axios.get('/api/semob-stop-routes', {
+      params: { stopId },
+      timeout: 15000,
+    });
+
+    const data = Array.isArray(response.data) ? response.data : [];
+
+    return data.map((route) => ({
+      id: route.id,
+      shortName:
+        route.shortName ||
+        route.short_name ||
+        route.routeShortName ||
+        '',
+      longName:
+        route.longName ||
+        route.long_name ||
+        route.routeLongName ||
+        '',
+      agencyName:
+        route.agencyName ||
+        route.agency_name ||
+        '',
+      raw: route,
+    }));
+  } catch (error) {
+    console.warn('[SEMOB stop routes]', stopId, error?.message || error);
+    return [];
+  }
+};
+
+export const getAllowedLinesForStops = async (stops = [], limit = 5) => {
+  const targetStops = stops
+    .filter((stop) => stop?.stopId)
+    .slice(0, limit);
+
+  const routeGroups = await Promise.all(
+    targetStops.map(async (stop) => {
+      const routes = await getSemobStopRoutes(stop.stopId);
+
+      return {
+        stopId: stop.stopId,
+        stopName: stop.stopName || stop.name,
+        routes,
+      };
+    })
+  );
+
+  const allowedLines = new Set();
+
+  routeGroups.forEach((group) => {
+    group.routes.forEach((route) => {
+      const code = normalizeLineForValidation(route.shortName || route.id);
+
+      if (code) {
+        allowedLines.add(code);
+      }
+    });
+  });
+
+  return {
+    allowedLines,
+    routeGroups,
+  };
+};

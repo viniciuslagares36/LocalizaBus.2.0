@@ -10,7 +10,12 @@ import axios from 'axios';
 import LeafletMap from './comp/LeafletMap';
 import RouteResultRefatorado from './comp/RouteResultRefatorado';
 import { normalizeTransitlandItineraryMode } from './services/transitland';
-import { findLocalDfPlaces, getAllSemobStops } from './services/semobStops';
+import {
+  findLocalDfPlaces,
+  getAllSemobStops,
+  getAllowedLinesForStops,
+  normalizeLineForValidation,
+} from './services/semobStops';
 import { planMobilibusRoute } from './services/mobilibusOtp';
 import {
   fetchDftransVehicles,
@@ -176,6 +181,21 @@ const useRouteSearch = () => {
 
   const geocodeAddress = async (address, signal) => {
     const safe = sanitizeInput(address);
+
+    const coordMatch = safe.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (coordMatch) {
+      const lat = Number(coordMatch[1]);
+      const lon = Number(coordMatch[2]);
+
+      if (Number.isFinite(lat) && Number.isFinite(lon)) {
+        return {
+          lat,
+          lon,
+          displayName: 'Local escolhido no mapa',
+          source: 'Mapa',
+        };
+      }
+    }
 
     // 1) Primeiro tenta a base oficial/local do DF/SEMOB/Mobilibus. Isso evita o TomTom jogar
     // Rodoviária/paradas para CEPs ou endereços genéricos.
@@ -547,6 +567,22 @@ const useRouteSearch = () => {
     }
   };
 
+  const isLineAllowedAtOrigin = (line, allowedLines) => {
+    if (!allowedLines || allowedLines.size === 0) return true;
+
+    const normalized = normalizeLineForValidation(line);
+
+    if (!normalized) return false;
+
+    return Array.from(allowedLines).some((allowed) => {
+      return (
+        normalized === allowed ||
+        normalized.endsWith(allowed) ||
+        allowed.endsWith(normalized)
+      );
+    });
+  };
+
   const combineRoutes = (itineraries, _stops, origin, destination, mode) => {
     if (!itineraries?.length) return [];
     const out = [];
@@ -628,7 +664,8 @@ const useRouteSearch = () => {
     destinationCoords,
     originAddress,
     destinationAddress,
-    nearbyStops = []
+    nearbyStops = [],
+    allowedOriginLines = null
   ) => {
     const userTargetStops = getTargetUserStops(nearbyStops, 3);
 
@@ -638,7 +675,8 @@ const useRouteSearch = () => {
           vehicle?.valid !== false &&
           vehicle?.line &&
           vehicle?.lat &&
-          vehicle?.lon
+          vehicle?.lon &&
+          isLineAllowedAtOrigin(vehicle.line, allowedOriginLines)
         );
       })
       .map((vehicle) => {
@@ -881,8 +919,17 @@ const searchRoute = async (originAddress, destinationAddress, mode) => {
   setError(null);
 
   try {
+    const originCoordsPromise =
+      window.__lastOriginCoords && window.__lastOriginAddress === originAddress
+        ? Promise.resolve({
+            ...window.__lastOriginCoords,
+            displayName: originAddress,
+            source: 'Mapa',
+          })
+        : geocodeAddress(originAddress, signal);
+
     const [originCoords, destCoords] = await Promise.all([
-      geocodeAddress(originAddress, signal),
+      originCoordsPromise,
       geocodeAddress(destinationAddress, signal),
     ]);
 
@@ -898,6 +945,14 @@ const searchRoute = async (originAddress, destinationAddress, mode) => {
       realtimeDataPromise,
     ]);
 
+    const { allowedLines: allowedOriginLines, routeGroups: originStopRouteGroups } =
+      mode === 'bus'
+        ? await getAllowedLinesForStops(nearbyStops, 5)
+        : { allowedLines: new Set(), routeGroups: [] };
+
+    window.__lastAllowedOriginLines = allowedOriginLines;
+    window.__lastOriginStopRouteGroups = originStopRouteGroups;
+
     window.__lastOriginCoords = originCoords;
     window.__lastDestinationCoords = destCoords;
     window.__lastOriginAddress = originAddress;
@@ -909,29 +964,8 @@ const searchRoute = async (originAddress, destinationAddress, mode) => {
     let alreadyShowedFastResult = false;
 
     if (mode === 'bus') {
-      const fastLiveRoutes = buildLiveBusRoutes(
-        realtimeData,
-        originCoords,
-        destCoords,
-        originAddress,
-        destinationAddress,
-        nearbyStops
-      );
-
-      if (fastLiveRoutes.length > 0) {
-        const fastRoutesWithStops = fastLiveRoutes.map((route) => ({
-          ...route,
-          nearbyStops,
-        }));
-
-        window.__lastOtpRoutes = [];
-
-        setRealtimeVehicles(realtimeData);
-        setRoutes(fastRoutesWithStops);
-        setLoading(false);
-
-        alreadyShowedFastResult = true;
-      }
+      // Aguarda o planejamento oficial antes de mostrar veículos ao vivo.
+      // Isso evita sugerir ônibus que estão perto no GPS, mas não servem para a rota.
     }
 
     let transitRoute = [];
@@ -966,6 +1000,12 @@ const searchRoute = async (originAddress, destinationAddress, mode) => {
       mode
     );
 
+    if (mode === 'bus' && allowedOriginLines.size > 0) {
+      finalCombined = finalCombined.filter((route) =>
+        isLineAllowedAtOrigin(route.line, allowedOriginLines)
+      );
+    }
+
     window.__lastOtpRoutes = finalCombined;
 
     if (mode === 'bus' && finalCombined.length === 0) {
@@ -975,7 +1015,8 @@ const searchRoute = async (originAddress, destinationAddress, mode) => {
         destCoords,
         originAddress,
         destinationAddress,
-        nearbyStops
+        nearbyStops,
+        allowedOriginLines
       );
     }
 
@@ -1140,7 +1181,8 @@ const searchRoute = async (originAddress, destinationAddress, mode) => {
               window.__lastDestinationCoords,
               window.__lastOriginAddress || 'origem',
               window.__lastDestinationAddress || 'destino',
-              window.__lastNearbyStops || []
+              window.__lastNearbyStops || [],
+              window.__lastAllowedOriginLines || null
             );
 
           const baseRoutesWithStops = baseRoutes.map((route) => ({
@@ -1322,7 +1364,7 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, onDetectLocat
   }, []);
 
   return (
-    <div className="relative" ref={inputRef}>
+    <div className="relative z-[1000]" ref={inputRef}>
       <div className="absolute left-3 md:left-4 top-1/2 -translate-y-1/2 z-10">
         <div className="rounded-full bg-[var(--accent)]/10 p-1 md:p-1.5">
           <Icon className="h-3.5 w-3.5 md:h-4 md:w-4 text-[var(--accent)]" strokeWidth={1.5} />
@@ -1348,7 +1390,7 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, onDetectLocat
         {showSuggestions && suggestions.length > 0 && (
           <motion.div initial={{ opacity: 0, y: -6, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.14 }}
-            className="absolute z-20 w-full mt-1.5 bg-[var(--dropdown-bg)] backdrop-blur-xl rounded-xl shadow-xl border border-[var(--border)] max-h-56 overflow-y-auto">
+            className="absolute z-[3000] w-full mt-1.5 bg-[var(--dropdown-bg)] backdrop-blur-xl rounded-xl shadow-2xl border border-[var(--border)] max-h-56 overflow-y-auto">
             {suggestions.map((s, i) => (
               <button key={i} onClick={() => { onChange(s.address.freeformAddress); setShowSuggestions(false); setSuggestions([]); }}
                 className="w-full text-left px-4 py-2.5 hover:bg-[var(--accent)]/8 transition-colors border-b border-[var(--border)] last:border-0">
@@ -1512,7 +1554,7 @@ function App() {
 
   setPickedLocation(coords);
   setUserLocationCoords(coords);
-  setOrigin('Local escolhido no mapa');
+  setOrigin(`${coords.lat},${coords.lon}`);
 
   window.__lastOriginCoords = coords;
   window.__lastOriginAddress = 'Local escolhido no mapa';
@@ -1680,7 +1722,7 @@ function App() {
               <LocationInput value={destination} onChange={setDestination} placeholder="Para onde você vai?" icon={Search}
                 onDetectLocation={() => detectLocation(setDestination)} detectingLocation={locationLoading} />
             </div>
-            <div className="mt-4 rounded-2xl overflow-hidden border border-[var(--border)]">
+            <div className="relative z-0 mt-4 rounded-2xl overflow-hidden border border-[var(--border)]">
   <LeafletMap
     center={
       pickedLocation
