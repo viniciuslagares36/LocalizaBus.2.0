@@ -497,15 +497,7 @@ const isVehicleHeadingToStop = (vehicle, stop) => {
       lon: Number(route.nearestStopLon),
     };
 
-    const headingToStop = matching.filter((vehicle) =>
-      isVehicleHeadingToStop(vehicle, stopCoords)
-    );
-
-    // Se nenhum veículo da linha está vindo na direção da parada,
-    // provavelmente o ônibus já passou ou está no sentido contrário.
-    if (!headingToStop.length) return null;
-
-    return headingToStop
+    return matching
       .map((vehicle) => {
         const vehicleCoords = {
           lat: Number(vehicle.lat),
@@ -730,6 +722,33 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
     return out.slice(0, 5);
   };
 
+  const filterRoutesByBoardingDistance = (routes, originCoords, nearbyStops) => {
+    if (!routes?.length || !originCoords) return routes || [];
+
+    const userIsAtOfficialStop = (nearbyStops || []).some(
+      (stop) => Number(stop.distanceKm || 999) <= 0.12
+    );
+
+    // Se o usuário está em uma parada oficial, não deixa o app mandar ele
+    // caminhar para outra parada distante ou do outro lado da via.
+    if (!userIsAtOfficialStop) {
+      return routes;
+    }
+
+    return routes.filter((route) => {
+      const lat = Number(route.nearestStopLat);
+      const lon = Number(route.nearestStopLon);
+
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return true;
+      }
+
+      const boardingDistanceKm = calcDist(originCoords, { lat, lon });
+
+      return boardingDistanceKm <= 0.18;
+    });
+  };
+
   const buildLiveBusRoutes = (
     vehicles,
     originCoords,
@@ -887,7 +906,56 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
     });
   };
 
-  const buildLiveBusLineRoutes = (vehicles, linha, originAddress, destinationAddress) => {
+  const getLineDirectionType = (vehicle, destinationHint = '') => {
+    const sentido = String(vehicle?.sentido || vehicle?.direction || vehicle?.destino || '').toLowerCase();
+    const hint = String(destinationHint || '').toLowerCase();
+    const text = `${sentido} ${hint}`;
+
+    if (
+      text.includes('ida') ||
+      text.includes('rodovi') ||
+      text.includes('plano piloto') ||
+      text.includes('w3') ||
+      text.includes('eixo') ||
+      text.includes('centro')
+    ) {
+      return 'ida';
+    }
+
+    if (
+      text.includes('volta') ||
+      text.includes('brazl') ||
+      text.includes('taguatinga') ||
+      text.includes('26 de setembro') ||
+      text.includes('incra') ||
+      text.includes('bairro')
+    ) {
+      return 'volta';
+    }
+
+    return 'indefinido';
+  };
+
+  const getDirectionLabel = (directionType, vehicle) => {
+    const raw = String(vehicle?.sentido || vehicle?.direction || '').trim();
+
+    if (raw) return raw;
+    if (directionType === 'ida') return 'Ida';
+    if (directionType === 'volta') return 'Volta';
+    return 'Sentido não informado';
+  };
+
+  const buildLiveBusLineRoutes = (vehicles, linha, originAddress, destinationAddress, options = {}) => {
+    const {
+      directionFilter = null,
+      destinationHint = '',
+      originCoords = null,
+      nearbyStops = [],
+      requireHeadingToStop = false,
+    } = options;
+
+    const userTargetStops = getTargetUserStops(nearbyStops, 3);
+
     return (vehicles || [])
       .filter((vehicle) => {
         const line = getVehicleLine(vehicle);
@@ -897,38 +965,81 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
         const line = getVehicleLine(vehicle);
         const operatorName = getVehicleOperatorName(vehicle);
         const timestamp = vehicle?.horario || vehicle?.updatedAt || null;
+        const directionType = getLineDirectionType(vehicle, destinationHint);
+        const directionLabel = getDirectionLabel(directionType, vehicle);
+
+        if (directionFilter && directionType !== directionFilter) {
+          return null;
+        }
+
+        const targetStop = originCoords
+          ? getBestUserStopForVehicle(vehicle, userTargetStops)
+          : null;
+
+        if (requireHeadingToStop && !targetStop) {
+          return null;
+        }
+
+        const etaToNearestStopMinutes = targetStop
+          ? estimateBusEtaToStop(vehicle, targetStop)
+          : null;
 
         const updatedAgeMinutes = timestamp
           ? Math.max(1, Math.round((Date.now() - Number(timestamp)) / 60000))
           : 1;
 
+        const userAtStop = Number(targetStop?.distanceKm || 999) <= 0.08;
+        const stopName = targetStop?.stopName || targetStop?.name || 'parada próxima';
+
+        const time = etaToNearestStopMinutes ?? updatedAgeMinutes;
+
         return {
-          id: `dftrans_line_${vehicle.numero || index}_${line}_${index}`,
+          id: `dftrans_line_${vehicle.numero || index}_${line}_${directionType}_${index}`,
           line,
           routeId: line,
+          routeColor: directionType === 'ida' ? '#93c5fd' : directionType === 'volta' ? '#bef264' : '#94a3b8',
+          routeTextColor: '#0f172a',
 
-          destination: destinationAddress,
-          origin: originAddress,
+          destination: destinationAddress || directionLabel,
+          origin: originAddress || `Linha ${linha}`,
 
-          time: updatedAgeMinutes,
-          estimatedTime: null,
+          time,
+          etaToNearestStopMinutes,
+          gpsUpdatedMinutes: updatedAgeMinutes,
+          estimatedTime: etaToNearestStopMinutes,
           stops: 0,
-          distance: null,
-          walkMinutes: 0,
+          distance: targetStop?.distanceKm != null ? Number(targetStop.distanceKm).toFixed(1) : null,
+          walkMinutes: userAtStop ? 0 : targetStop?.distanceKm ? Math.max(1, Math.ceil((Number(targetStop.distanceKm) / 4.8) * 60)) : 0,
 
-          fromStop: `Ônibus ${vehicle.numero || 'ao vivo'}`,
-          toStop: destinationAddress,
+          fromStop: targetStop
+            ? userAtStop
+              ? `Você está na parada ${stopName}`
+              : stopName
+            : `Ônibus ${vehicle.numero || 'ao vivo'}`,
+          toStop: destinationAddress || directionLabel,
 
           mode: 'BUS',
-          source: 'DFTrans GPS / Cloudflare',
-          instruction: `Linha ${line} detectada ao vivo pela ${operatorName}. Sentido: ${vehicle.sentido || 'não informado'}. Velocidade: ${Math.round(vehicle.speed || vehicle.velocidade || 0)} km/h.`,
+          source: 'DFTrans GPS / Consulta por linha',
+          instruction: targetStop
+            ? userAtStop
+              ? `Você já está na parada. Linha ${line} (${directionLabel}) estimada para passar em cerca de ${etaToNearestStopMinutes ?? '--'} min.`
+              : `Caminhe até ${stopName}. Linha ${line} (${directionLabel}) estimada para passar em cerca de ${etaToNearestStopMinutes ?? '--'} min.`
+            : `Linha ${line} ao vivo. Sentido: ${directionLabel}. Operadora: ${operatorName}. GPS atualizado há ${updatedAgeMinutes} min.`,
 
           tripId: null,
           isLive: true,
           isGpsOnly: true,
+          isLineSearch: true,
+          directionType,
+          directionLabel,
 
           lat: Number(vehicle.lat),
           lon: Number(vehicle.lon),
+
+          nearestStopName: targetStop?.stopName || targetStop?.name || null,
+          nearestStopLat: targetStop?.lat || null,
+          nearestStopLon: targetStop?.lon || null,
+          nearestStopDistanceKm: targetStop?.distanceKm ?? null,
 
           realTimeGPS: {
             lat: Number(vehicle.lat),
@@ -939,14 +1050,26 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
             updatedAt: timestamp,
             numero: vehicle.numero,
             line,
-            sentido: vehicle.sentido || null,
+            sentido: directionLabel,
             operadora: operatorName,
           },
         };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        const dirA = a.directionType === 'ida' ? 0 : a.directionType === 'volta' ? 1 : 2;
+        const dirB = b.directionType === 'ida' ? 0 : b.directionType === 'volta' ? 1 : 2;
+
+        if (dirA !== dirB) return dirA - dirB;
+
+        const timeA = Number(a.etaToNearestStopMinutes ?? a.gpsUpdatedMinutes ?? 9999);
+        const timeB = Number(b.etaToNearestStopMinutes ?? b.gpsUpdatedMinutes ?? 9999);
+
+        return timeA - timeB;
       });
   };
 
-  const searchBusLine = async (linha, originAddress, destinationAddress) => {
+  const searchBusLine = async (linha, originAddress = '', destinationAddress = 'Consulta de linha') => {
     if (!linha || isSearchingRef.current) return;
 
     abortControllerRef.current?.abort();
@@ -959,6 +1082,7 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
     try {
       window.__lastLiveLine = linha;
       window.__lastSearchType = 'line';
+      window.__lastLineDestinationHint = destinationAddress;
 
       const vehicles = await getLiveVehiclesByLine(linha);
 
@@ -972,8 +1096,9 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
       const liveRoutes = buildLiveBusLineRoutes(
         vehicles,
         linha,
-        originAddress || linha,
-        destinationAddress || 'ônibus ao vivo'
+        originAddress || `Linha ${linha}`,
+        destinationAddress || 'Consulta de linha',
+        { destinationHint: destinationAddress }
       );
 
       setRealtimeVehicles(vehicles);
@@ -987,6 +1112,139 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
       isSearchingRef.current = false;
     }
   };
+
+  const searchBusLineWithDestination = async (linha, destinationAddress) => {
+    if (!linha || !destinationAddress || isSearchingRef.current) return;
+
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
+
+    isSearchingRef.current = true;
+    setLoading(true);
+    setError(null);
+
+    try {
+      window.__lastLiveLine = linha;
+      window.__lastSearchType = 'line_destination';
+      window.__lastLineDestinationHint = destinationAddress;
+
+      const vehicles = await getLiveVehiclesByLine(linha);
+
+      if (!vehicles?.length) {
+        setRoutes([]);
+        setRealtimeVehicles([]);
+        setError(`Nenhum ônibus ao vivo encontrado para a linha ${linha}.`);
+        return;
+      }
+
+      const normalizedDest = String(destinationAddress || '').toLowerCase();
+      const directionFilter =
+        normalizedDest.includes('rodovi') ||
+        normalizedDest.includes('plano piloto') ||
+        normalizedDest.includes('w3') ||
+        normalizedDest.includes('centro')
+          ? 'ida'
+          : normalizedDest.includes('brazl') ||
+            normalizedDest.includes('taguatinga') ||
+            normalizedDest.includes('26 de setembro') ||
+            normalizedDest.includes('incra')
+            ? 'volta'
+            : null;
+
+      let liveRoutes = buildLiveBusLineRoutes(
+        vehicles,
+        linha,
+        `Linha ${linha}`,
+        destinationAddress,
+        {
+          directionFilter,
+          destinationHint: destinationAddress,
+        }
+      );
+
+      if (!liveRoutes.length && directionFilter) {
+        liveRoutes = buildLiveBusLineRoutes(
+          vehicles,
+          linha,
+          `Linha ${linha}`,
+          destinationAddress,
+          { destinationHint: destinationAddress }
+        );
+      }
+
+      setRealtimeVehicles(vehicles);
+      setRoutes(liveRoutes);
+    } catch (error) {
+      console.error('[DFTrans GPS] Erro ao buscar linha com destino:', error);
+      setRoutes([]);
+      setError('Não foi possível buscar a linha com esse destino agora.');
+    } finally {
+      setLoading(false);
+      isSearchingRef.current = false;
+    }
+  };
+
+  const searchBusLineFromOrigin = async (linha, originAddress) => {
+    if (!linha || !originAddress || isSearchingRef.current) return;
+
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
+    const { signal } = abortControllerRef.current;
+
+    isSearchingRef.current = true;
+    setLoading(true);
+    setError(null);
+
+    try {
+      window.__lastLiveLine = linha;
+      window.__lastSearchType = 'line_origin';
+
+      const [originCoords, vehicles] = await Promise.all([
+        geocodeAddress(originAddress, signal),
+        getLiveVehiclesByLine(linha),
+      ]);
+
+      if (!vehicles?.length) {
+        setRoutes([]);
+        setRealtimeVehicles([]);
+        setError(`Nenhum ônibus ao vivo encontrado para a linha ${linha}.`);
+        return;
+      }
+
+      const nearbyStops = await getNearbyStops(originCoords);
+
+      window.__lastOriginCoords = originCoords;
+      window.__lastOriginAddress = originAddress;
+      window.__lastNearbyStops = nearbyStops;
+
+      const liveRoutes = buildLiveBusLineRoutes(
+        vehicles,
+        linha,
+        originAddress,
+        `Linha ${linha}`,
+        {
+          originCoords,
+          nearbyStops,
+          requireHeadingToStop: true,
+        }
+      );
+
+      setRealtimeVehicles(vehicles);
+      setRoutes(liveRoutes);
+
+      if (!liveRoutes.length) {
+        setError(`Nenhum ônibus da linha ${linha} parece estar vindo para essa parada agora.`);
+      }
+    } catch (error) {
+      console.error('[DFTrans GPS] Erro ao buscar linha por origem:', error);
+      setRoutes([]);
+      setError('Não foi possível buscar essa linha perto da origem agora.');
+    } finally {
+      setLoading(false);
+      isSearchingRef.current = false;
+    }
+  };
+
 const searchRoute = async (originAddress, destinationAddress, mode) => {
   if (!originAddress || !destinationAddress || isSearchingRef.current) return;
 
@@ -1081,6 +1339,14 @@ const searchRoute = async (originAddress, destinationAddress, mode) => {
       mode
     );
 
+    if (mode === 'bus') {
+      finalCombined = filterRoutesByBoardingDistance(
+        finalCombined,
+        originCoords,
+        nearbyStops
+      );
+    }
+
     if (mode === 'bus' && allowedOriginLines.size > 0) {
       finalCombined = finalCombined.filter((route) =>
         isLineAllowedAtOrigin(route.line, allowedOriginLines)
@@ -1165,6 +1431,19 @@ const searchRoute = async (originAddress, destinationAddress, mode) => {
       const rv = findBestVehicleForRoute(realtimeData, r);
 
       if (rv) {
+        const routeBoardingStop = {
+          lat: r.nearestStopLat,
+          lon: r.nearestStopLon,
+        };
+
+        if (
+          routeBoardingStop.lat &&
+          routeBoardingStop.lon &&
+          !isVehicleHeadingToStop(rv, routeBoardingStop)
+        ) {
+          return { ...r, isLive: false, realTimeGPS: null };
+        }
+
         const etaMin = getEtaMinutes(rv.eta);
         const snappedPosition = snapVehicleToRoute(rv, r);
 
@@ -1275,6 +1554,19 @@ const searchRoute = async (originAddress, destinationAddress, mode) => {
             const rv = findBestVehicleForRoute(nv, r);
 
 if (rv) {
+  const routeBoardingStop = {
+    lat: r.nearestStopLat,
+    lon: r.nearestStopLon,
+  };
+
+  if (
+    routeBoardingStop.lat &&
+    routeBoardingStop.lon &&
+    !isVehicleHeadingToStop(rv, routeBoardingStop)
+  ) {
+    return { ...r, isLive: false, realTimeGPS: null };
+  }
+
   const etaMin = getEtaMinutes(rv.eta);
   const snappedPosition = snapVehicleToRoute(rv, r);
 
@@ -1350,10 +1642,13 @@ if (rv) {
     error,
     searchRoute,
     searchBusLine,
+    searchBusLineWithDestination,
+    searchBusLineFromOrigin,
     realtimeVehicles,
   };
 };
 
+// ─── LOCATION INPUT ──────────────────────────────
 // ─── LOCATION INPUT ──────────────────────────────
 const LocationInput = ({
   value,
@@ -1614,6 +1909,8 @@ function App() {
     error,
     searchRoute,
     searchBusLine,
+    searchBusLineWithDestination,
+    searchBusLineFromOrigin,
   } = useRouteSearch();
   const searchRef = useRef(null);
   useEffect(() => {
@@ -1735,8 +2032,6 @@ const handleSearch = async () => {
   const safeO = sanitizeInput(origin);
   const safeD = sanitizeInput(destination);
 
-  if (!safeO || !safeD) return;
-
   setHasSearched(true);
 
   // Fecha o mapa inicial assim que o usuário clicar em "Buscar rota agora"
@@ -1744,16 +2039,31 @@ const handleSearch = async () => {
   setPickingLocation(false);
 
   if (selectedMode === 'bus') {
-    if (isBusLineSearch(safeO)) {
-      await searchBusLine(safeO, safeO, safeD);
+    // Consulta pura por linha: usuário digitou só 400/401/411.2 em qualquer campo.
+    if (isBusLineSearch(safeO) && !safeD) {
+      await searchBusLine(safeO, `Linha ${safeO}`, 'Consulta de linha');
       return;
     }
 
-    if (isBusLineSearch(safeD)) {
-      await searchBusLine(safeD, safeO, safeD);
+    if (isBusLineSearch(safeD) && !safeO) {
+      await searchBusLine(safeD, `Linha ${safeD}`, 'Consulta de linha');
+      return;
+    }
+
+    // Linha + destino: exemplo "400" -> "Rodoviária".
+    if (isBusLineSearch(safeO) && safeD) {
+      await searchBusLineWithDestination(safeO, safeD);
+      return;
+    }
+
+    // Origem + linha: exemplo "EPCT 85.3 Sul" -> "400".
+    if (safeO && isBusLineSearch(safeD)) {
+      await searchBusLineFromOrigin(safeD, safeO);
       return;
     }
   }
+
+  if (!safeO || !safeD) return;
 
   if (pickedLocation) {
     window.__lastOriginCoords = pickedLocation;
@@ -1762,6 +2072,17 @@ const handleSearch = async () => {
 
   await searchRoute(safeO, safeD, selectedMode);
 };
+
+const safeOriginForSearch = sanitizeInput(origin);
+const safeDestinationForSearch = sanitizeInput(destination);
+const canSearch = selectedMode === 'bus'
+  ? Boolean(
+      (safeOriginForSearch && safeDestinationForSearch) ||
+      isBusLineSearch(safeOriginForSearch) ||
+      isBusLineSearch(safeDestinationForSearch)
+    )
+  : Boolean(safeOriginForSearch && safeDestinationForSearch);
+
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] transition-colors duration-500 font-apple">
@@ -1920,8 +2241,8 @@ const handleSearch = async () => {
             </div>
 
             <motion.button whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.98 }}
-              onClick={handleSearch} disabled={!origin || !destination || loading}
-              className={`mt-6 w-full rounded-xl md:rounded-2xl py-3 md:py-3.5 font-semibold flex items-center justify-center gap-2 text-sm md:text-base tracking-tight transition-all duration-200 ${origin && destination && !loading
+              onClick={handleSearch} disabled={!canSearch || loading}
+              className={`mt-6 w-full rounded-xl md:rounded-2xl py-3 md:py-3.5 font-semibold flex items-center justify-center gap-2 text-sm md:text-base tracking-tight transition-all duration-200 ${canSearch && !loading
                 ? 'bg-[var(--accent)] text-white hover:opacity-92 shadow-lg shadow-[var(--accent)]/20'
                 : 'bg-[var(--disabled-bg)] text-[var(--disabled-text)] cursor-not-allowed'}`}>
               {loading ? <><Loader2 className="h-4 w-4 animate-spin" />Buscando rota…</> : 'Buscar rota agora'}

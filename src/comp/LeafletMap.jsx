@@ -44,7 +44,7 @@ const userPickIcon = L.divIcon({
       <div style="
         transform: rotate(45deg);
         font-size: 16px;
-      ">📍</div>
+      "></div>
     </div>
   `,
   iconSize: [34, 34],
