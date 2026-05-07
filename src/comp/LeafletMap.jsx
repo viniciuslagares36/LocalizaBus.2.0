@@ -145,7 +145,7 @@ const createBusWithLineBadgeIcon = (line, isSelected = false, directionType = ''
           border: 2px solid rgba(255,255,255,.9);
           box-shadow: 0 8px 18px rgba(0,0,0,.38);
         ">
-          <img src="${BUS_ICON_URL}" alt="Ã´nibus" style="
+          <img src="${BUS_ICON_URL}" alt="ônibus" style="
             width: ${Math.round(busSize * 0.72)}px;
             height: ${Math.round(busSize * 0.72)}px;
             display: block;
@@ -195,7 +195,7 @@ const getStopsFromRoutes = (routes = []) => {
         line: route.line,
         vehicleNumber: route.realTimeGPS?.numero || '',
         etaMinutes: route.etaToNearestStopMinutes ?? route.time ?? null,
-        fromStop: route.fromStop || route.nearestStopName || 'Parada prÃ³xima',
+        fromStop: route.fromStop || route.nearestStopName || 'Parada próxima',
         toStop: route.toStop || route.destination || 'Destino',
         sentido: route.realTimeGPS?.sentido || route.sentido || null,
         isGpsOnly: route.isGpsOnly || false,
@@ -218,7 +218,7 @@ const getStopsFromRoutes = (routes = []) => {
         if (!map.has(key)) {
           map.set(key, {
             id: key,
-            name: stop.stopName || stop.name || 'Parada prÃ³xima',
+            name: stop.stopName || stop.name || 'Parada próxima',
             lat: Number(stop.lat),
             lon: Number(stop.lon),
             line: route.line,
@@ -317,16 +317,16 @@ const formatGpsUpdatedAt = (timestamp, now = Date.now()) => {
   }
 
   if (seconds < 60) {
-    return `Atualizado hÃ¡ ${seconds} seg`;
+    return `Atualizado há ${seconds} seg`;
   }
 
   const minutes = Math.floor(seconds / 60);
 
   if (minutes === 1) {
-    return 'Atualizado hÃ¡ 1 min';
+    return 'Atualizado há 1 min';
   }
 
-  return `Atualizado hÃ¡ ${minutes} min`;
+  return `Atualizado há ${minutes} min`;
 };
 function FollowSelectedTarget({ markers, routes, selectedRouteId }) {
   const map = useMap();
@@ -444,7 +444,7 @@ function VisibleDfStopsLayer({ stops = [], hiddenStopKeys = new Set() }) {
   return visibleStops.map((stop) => {
     const lat = Number(stop.lat ?? stop.position?.lat);
     const lon = Number(stop.lon ?? stop.position?.lon);
-    const name = stop.name || stop.stopName || 'Parada de Ã´nibus';
+    const name = stop.name || stop.stopName || 'Parada de ônibus';
 
     return (
       <Marker
@@ -456,7 +456,7 @@ function VisibleDfStopsLayer({ stops = [], hiddenStopKeys = new Set() }) {
           <div style={{ minWidth: 180 }}>
             <strong>{name}</strong>
             <br />
-            {stop.stopId ? `CÃ³digo: ${stop.stopId}` : 'Parada oficial do DF'}
+            {stop.stopId ? `Código: ${stop.stopId}` : 'Parada oficial do DF'}
             {stop.address ? (
               <>
                 <br />
@@ -604,7 +604,7 @@ export default function LeafletMap({
     <Popup>
       <strong>Local escolhido</strong>
       <br />
-      Arraste o balÃ£o ou clique em outro ponto do mapa.
+      Arraste o balão ou clique em outro ponto do mapa.
     </Popup>
   </Marker>
 )}
@@ -637,7 +637,7 @@ export default function LeafletMap({
       <Popup>
         <strong>Origem da busca</strong>
         <br />
-        Caminhe atÃ© a parada destacada
+        Caminhe até a parada destacada
       </Popup>
     </CircleMarker>
   </>
@@ -715,7 +715,7 @@ export default function LeafletMap({
       <Popup>
         <div style={{ minWidth: 230 }}>
           <strong>
-            {isBoarding ? 'Parada de embarque' : 'Parada prÃ³xima'}
+            {isBoarding ? 'Parada de embarque' : 'Parada próxima'}
           </strong>
 
           <br />
@@ -729,7 +729,7 @@ export default function LeafletMap({
           ) : null}
 
           <div style={{ marginTop: 10 }}>
-            <strong>Ã”nibus previstos:</strong>
+            <strong>Ônibus previstos:</strong>
 
             {passingRoutes.length ? (
               <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
@@ -747,14 +747,14 @@ export default function LeafletMap({
   Linha {route.line}
   {route.etaMinutes != null ? (
     <>
-      {' â€¢ '}
+      {' • '}
       {Number(route.etaMinutes) <= 1 ? 'AGORA' : `${route.etaMinutes} min`}
     </>
   ) : null}
 </div>
 
                     <div style={{ fontSize: 11, opacity: 0.82 }}>
-                      {route.fromStop} â†’ {route.toStop}
+                      {route.fromStop} → {route.toStop}
                     </div>
 
                     {route.sentido ? (
@@ -767,7 +767,7 @@ export default function LeafletMap({
               </div>
             ) : (
               <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
-                Nenhum Ã´nibus previsto nesta busca.
+                Nenhum ônibus previsto nesta busca.
               </div>
             )}
           </div>
@@ -799,11 +799,11 @@ export default function LeafletMap({
 
       <Marker
         position={[Number(marker.lat), Number(marker.lon)]}
-        icon={createBusWithLineBadgeIcon(marker.line, isSelected, marker.directionType)}
+        icon={busIcon || fallbackBusIcon}
       >
         <Popup>
           <div style={{ minWidth: 230 }}>
-            <strong>Linha {marker.line || 'Ã´nibus'}</strong>
+            <strong>Linha {marker.line || 'ônibus'}</strong>
 
             <br />
 
@@ -811,14 +811,14 @@ export default function LeafletMap({
               <span>{marker.itinerary}</span>
             ) : (
               <span>
-                {marker.fromStop || 'Origem'} â†’ {marker.toStop || 'Destino'}
+                {marker.fromStop || 'Origem'} → {marker.toStop || 'Destino'}
               </span>
             )}
 
             <div style={{ marginTop: 10 }}>
               {marker.vehicleNumber ? (
                 <>
-                  <strong>VeÃ­culo:</strong> {marker.vehicleNumber}
+                  <strong>Veículo:</strong> {marker.vehicleNumber}
                   <br />
                 </>
               ) : null}
@@ -853,7 +853,7 @@ export default function LeafletMap({
                 <>
                   <br />
                   <span style={{ opacity: 0.72 }}>
-                    PrevisÃ£o estimada por GPS
+                    Previsão estimada por GPS
                   </span>
                 </>
               ) : null}
@@ -897,7 +897,7 @@ export default function LeafletMap({
     }}
     title="Escolher local no mapa"
   >
-    <span>ðŸ“</span>
+    <span>📍</span>
     <span>{pickingLocation ? 'Clique no mapa' : 'Escolher no mapa'}</span>
   </button>
 )}
@@ -917,7 +917,7 @@ export default function LeafletMap({
           boxShadow: '0 4px 14px rgba(0,0,0,.18)',
         }}
       >
-{visibleMarkers.length} Ã´nibus ao vivo â€¢ {(allStops?.length || routeStops.length)} paradas do DF
+{visibleMarkers.length} ônibus ao vivo • {(allStops?.length || routeStops.length)} paradas do DF
       </div>
     </div>
   );
