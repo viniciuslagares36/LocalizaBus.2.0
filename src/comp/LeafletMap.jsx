@@ -33,7 +33,7 @@ const userPickIcon = L.divIcon({
       width: 34px;
       height: 34px;
       border-radius: 999px 999px 999px 4px;
-      background: #00e5ff;
+      background: #0a84ff;
       transform: rotate(-45deg);
       border: 3px solid white;
       box-shadow: 0 8px 22px rgba(0,0,0,.35);
@@ -558,7 +558,7 @@ export default function LeafletMap({
       radius={8}
       pathOptions={{
         color: '#ffffff',
-        fillColor: '#00e5ff',
+        fillColor: '#0a84ff',
         fillOpacity: 1,
         weight: 3,
         opacity: 1,
@@ -585,7 +585,7 @@ export default function LeafletMap({
         [Number(boardingStop.lat), Number(boardingStop.lon)],
       ]}
       pathOptions={{
-        color: '#00e5ff',
+        color: #0a84ff',
         weight: 4,
         opacity: 0.95,
         dashArray: '10 8',
@@ -718,8 +718,8 @@ export default function LeafletMap({
           center={[Number(marker.lat), Number(marker.lon)]}
           radius={18}
           pathOptions={{
-            color: '#00e5ff',
-            fillColor: '#00e5ff',
+            color: '#0a84ff',
+            fillColor: '#0a84ff',
             fillOpacity: 0.16,
             weight: 3,
             opacity: 0.95,
@@ -811,7 +811,7 @@ export default function LeafletMap({
       fontWeight: 800,
       cursor: 'pointer',
       background: pickingLocation
-        ? '#00e5ff'
+        ? '#0a84ff'
         : isDark
           ? 'rgba(15,23,42,.92)'
           : 'rgba(255,255,255,.96)',
@@ -827,7 +827,7 @@ export default function LeafletMap({
     }}
     title="Escolher local no mapa"
   >
-    <span>📍</span>
+    <span></span>
     <span>{pickingLocation ? 'Clique no mapa' : 'Escolher no mapa'}</span>
   </button>
 )}

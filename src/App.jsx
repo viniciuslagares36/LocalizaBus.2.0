@@ -1274,7 +1274,17 @@ if (rv) {
 };
 
 // ─── LOCATION INPUT ──────────────────────────────
-const LocationInput = ({ value, onChange, placeholder, icon: Icon, onDetectLocation, detectingLocation }) => {
+// ─── LOCATION INPUT ──────────────────────────────
+const LocationInput = ({
+  value,
+  onChange,
+  placeholder,
+  icon: Icon,
+  onDetectLocation,
+  detectingLocation,
+  onMapPickClick,
+  showMapPickButton = false,
+}) => {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [sugLoading, setSugLoading] = useState(false);
@@ -1378,6 +1388,18 @@ const LocationInput = ({ value, onChange, placeholder, icon: Icon, onDetectLocat
       />
       <div className="absolute right-2 md:right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
         {sugLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--accent)]" />}
+        {showMapPickButton && onMapPickClick && (
+  <motion.button
+    whileHover={{ scale: 1.08 }}
+    whileTap={{ scale: 0.92 }}
+    onClick={onMapPickClick}
+    type="button"
+    className="flex items-center justify-center w-7 h-7 rounded-full text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors duration-200"
+    title="Escolher no mapa"
+  >
+    <MapPin className="h-3.5 w-3.5" strokeWidth={2} />
+  </motion.button>
+)}
         {onDetectLocation && (
           <motion.button whileTap={{ scale: 0.92 }} onClick={onDetectLocation} disabled={detectingLocation}
             className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] md:text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors duration-200">
@@ -1498,6 +1520,7 @@ function App() {
   const [allDfStops, setAllDfStops] = useState([]);
   const [pickedLocation, setPickedLocation] = useState(null);
   const [pickingLocation, setPickingLocation] = useState(false);
+  const [showPickerMap, setShowPickerMap] = useState(true);
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
   const [selectedMode, setSelectedMode] = useState('bus');
@@ -1623,13 +1646,22 @@ function App() {
     );
   };
 
- const handleSearch = async () => {
+  const handleOpenMapPicker = () => {
+  setShowPickerMap(true);
+  setPickingLocation(true);
+};
+
+const handleSearch = async () => {
   const safeO = sanitizeInput(origin);
   const safeD = sanitizeInput(destination);
 
   if (!safeO || !safeD) return;
 
   setHasSearched(true);
+
+  // Fecha o mapa inicial assim que o usuário clicar em "Buscar rota agora"
+  setShowPickerMap(false);
+  setPickingLocation(false);
 
   if (selectedMode === 'bus') {
     if (isBusLineSearch(safeO)) {
@@ -1717,31 +1749,74 @@ function App() {
 
           <div className="p-6 md:p-8">
             <div className="space-y-3">
-              <LocationInput value={origin} onChange={setOrigin} placeholder="Ponto de partida" icon={MapPin}
-                onDetectLocation={() => detectLocation(setOrigin)} detectingLocation={locationLoading} />
-              <LocationInput value={destination} onChange={setDestination} placeholder="Para onde você vai?" icon={Search}
-                onDetectLocation={() => detectLocation(setDestination)} detectingLocation={locationLoading} />
+              <LocationInput
+  value={origin}
+  onChange={setOrigin}
+  placeholder="Ponto de partida"
+  icon={MapPin}
+  onDetectLocation={() => detectLocation(setOrigin)}
+  detectingLocation={locationLoading}
+  onMapPickClick={handleOpenMapPicker}
+  showMapPickButton={!showPickerMap}
+/>
+              <LocationInput
+  value={destination}
+  onChange={setDestination}
+  placeholder="Para onde você vai?"
+  icon={Search}
+  onDetectLocation={() => detectLocation(setDestination)}
+  detectingLocation={locationLoading}
+/>
             </div>
-            <div className="relative z-0 mt-4 rounded-2xl overflow-hidden border border-[var(--border)]">
-  <LeafletMap
-    center={
-      pickedLocation
-        ? [pickedLocation.lon, pickedLocation.lat]
-        : [-47.8828, -15.7939]
-    }
-    markers={[]}
-    routes={[]}
-    userPosition={userLocationCoords}
-    selectedRouteId={null}
-    height={320}
-    isDark={dark}
-    allStops={allDfStops}
-    pickedLocation={pickedLocation}
-    onPickLocation={handlePickLocation}
-    pickingLocation={pickingLocation}
-    onTogglePickingLocation={() => setPickingLocation((value) => !value)}
-  />
-</div>
+<AnimatePresence initial={false}>
+  {showPickerMap && (
+    <motion.div
+      key="picker-map"
+      initial={{
+        opacity: 0,
+        height: 0,
+        y: -8,
+        scale: 0.98,
+      }}
+      animate={{
+        opacity: 1,
+        height: 320,
+        y: 0,
+        scale: 1,
+      }}
+      exit={{
+        opacity: 0,
+        height: 0,
+        y: -10,
+        scale: 0.97,
+      }}
+      transition={{
+        duration: 0.35,
+        ease: [0.22, 1, 0.36, 1],
+      }}
+      className="relative z-0 mt-4 overflow-hidden rounded-2xl border border-[var(--border)]"
+    >
+      <LeafletMap
+        center={
+          pickedLocation
+            ? [pickedLocation.lon, pickedLocation.lat]
+            : [-47.8828, -15.7939]
+        }
+        markers={[]}
+        routes={[]}
+        userPosition={userLocationCoords}
+        selectedRouteId={null}
+        height={320}
+        isDark={dark}
+        allStops={allDfStops}
+        pickedLocation={pickedLocation}
+        onPickLocation={handlePickLocation}
+        pickingLocation={pickingLocation}
+        onTogglePickingLocation={() => setPickingLocation((value) => !value)}
+      />
+    </motion.div>
+  )}
+</AnimatePresence>
 
             <div className="mt-6">
               <p className="text-[10px] font-semibold text-[var(--text-tertiary)] uppercase tracking-widest mb-3">Tipo de transporte</p>
