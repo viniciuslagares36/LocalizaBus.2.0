@@ -1767,7 +1767,7 @@ const LocationInput = ({
   }, []);
 
   return (
-    <div className="relative z-[6000]" ref={inputRef}>
+    <div className="relative z-[1000]" ref={inputRef}>
       <div className="absolute left-3 md:left-4 top-1/2 -translate-y-1/2 z-10">
         <div className="rounded-full bg-[var(--accent)]/10 p-1 md:p-1.5">
           <Icon className="h-3.5 w-3.5 md:h-4 md:w-4 text-[var(--accent)]" strokeWidth={1.5} />
@@ -1805,8 +1805,7 @@ const LocationInput = ({
         {showSuggestions && suggestions.length > 0 && (
           <motion.div initial={{ opacity: 0, y: -6, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.14 }}
-            className="absolute z-[9999] w-full mt-1.5 bg-[var(--dropdown-bg)] backdrop-blur-xl rounded-xl shadow-2xl border border-[var(--border)] max-h-72 overflow-y-auto"
-            >
+            className="absolute z-[3000] w-full mt-1.5 bg-[var(--dropdown-bg)] backdrop-blur-xl rounded-xl shadow-2xl border border-[var(--border)] max-h-56 overflow-y-auto">
             {suggestions.map((s, i) => (
               <button key={i} onClick={() => { onChange(s.address.freeformAddress); setShowSuggestions(false); setSuggestions([]); }}
                 className="w-full text-left px-4 py-2.5 hover:bg-[var(--accent)]/8 transition-colors border-b border-[var(--border)] last:border-0">
@@ -2277,19 +2276,15 @@ const canSearch = selectedMode === 'bus'
 
       {/* SEARCH */}
       <div ref={searchRef} className="max-w-2xl mx-auto px-4 -mt-14 md:-mt-20 pb-24 relative z-10">
-<motion.div
-  initial={{ opacity: 0, y: 24 }}
-  animate={{ opacity: 1, y: 0 }}
-  transition={{ delay: 0.1, ...spring }}
-  className="bg-[var(--card-bg)] backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-2xl border border-[var(--border)] overflow-visible"
->
-  <div className="px-6 md:px-8 py-4 md:py-5 border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent)]/5 to-transparent">
+        <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, ...spring }}
+          className="bg-[var(--card-bg)] backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-2xl border border-[var(--border)] overflow-hidden">
+          <div className="px-6 md:px-8 py-4 md:py-5 border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent)]/5 to-transparent">
             <h2 className="text-base md:text-lg font-semibold text-[var(--text-primary)] tracking-tight">Planeje sua rota</h2>
             <p className="text-xs md:text-sm text-[var(--text-secondary)] mt-0.5">Busque por ônibus, metrô e caminhada</p>
           </div>
 
           <div className="p-6 md:p-8">
-            <div className="relative z-[5000] space-y-3">
+            <div className="space-y-3">
               <LocationInput
   value={origin}
   onChange={setOrigin}
