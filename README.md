@@ -1,23 +1,43 @@
-# 🚌 LocalizaBus — DF
-Sistema de monitoramento de transporte público em tempo real para o Distrito Federal. Uma aplicação leve, moderna e focada em utilidade imediata.
+# 🚌 LocalizaBus 2.0 — Mobilidade em Brasília
 
+O **LocalizaBus 2.0** é uma aplicação web moderna para consulta, planejamento e monitoramento de transporte público no Distrito Federal.  
+O projeto foi criado com foco em **mobilidade urbana**, **ônibus ao vivo**, **rotas inteligentes** e uma experiência visual simples, rápida e responsiva.
 
-# 🚀 Funcionalidades
-Geolocalização: Busca ônibus próximos com base na posição atual do usuário.
+A ideia é entregar uma alternativa leve, bonita e funcional para quem depende do transporte público no DF, permitindo consultar linhas, visualizar ônibus no mapa e planejar trajetos de forma prática.
 
-Dados em Tempo Real: Integração via Webhook para consulta de frota ao vivo.
+---
 
-Interface Neon: Design Dark Mode otimizado para dispositivos móveis.
+## 🚀 Funcionalidades
 
-Acesso Rápido: Atalho integrado para suporte via bot no Telegram.
+### 📍 Planejamento de rotas
+Permite pesquisar uma origem e um destino para encontrar rotas de ônibus, metrô ou caminhada.
 
+- Busca por endereço
+- Busca por pontos/paradas oficiais
+- Sugestões automáticas de locais
+- Integração com dados de transporte
+- Visualização da rota no mapa
 
-# 🛠️ Tecnologias
-Frontend: HTML5, CSS3 (Custom Properties & Animations), JavaScript (Vanilla).
+---
 
-Backend: Integração via n8n (Webhook).
+### 🚌 Ônibus em tempo real
+Consulta veículos ao vivo usando dados de GPS da frota.
 
-Ícones: SVG (Lucide/Feather icons).
+- Exibição dos ônibus no mapa
+- Atualização automática
+- Linha do ônibus
+- Número do veículo
+- Operadora
+- Sentido da rota
+- Velocidade e posição aproximada
 
+---
 
-# 📦 Desenvolvido para facilitar a mobilidade urbana no coração do Brasil.
+### 🔎 Busca por número da linha
+O usuário pode pesquisar diretamente pelo número da linha, como:
+
+```txt
+400
+401
+411.2
+965.1
