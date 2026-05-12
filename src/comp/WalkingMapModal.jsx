@@ -1,5 +1,5 @@
 // src/comp/WalkingMapModal.jsx
-// ✅ FIX: Dark mode detection → TomTom night/day style automático
+// ✅ FIX: Mapa visual agora usa Mapbox GL JS navigation-day/night
 // ✅ FIX: Navegação 3D real pitch:60, zoom:17.5, bearing da rota/GPS
 // ✅ FIX: Strip de tags HTML nas instruções (<street>, <b>, etc.)
 // ✅ FIX: Painel inferior com contraste correto dark/light
@@ -20,8 +20,6 @@ import { MAPBOX_TOKEN, TOMTOM_API_KEY, ORS_API_KEY } from "../config/apiKeys";
 const MAPBOX_KEY = MAPBOX_TOKEN;
 const TOMTOM_KEY = TOMTOM_API_KEY;
 const ORS_KEY = ORS_API_KEY;
-
-const KEY = TOMTOM_KEY;
 
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
@@ -67,13 +65,12 @@ const getIsDarkMode = (isDarkProp) => {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
 };
 
-// ─── Estilo TomTom conforme dark/light ────────────────────────────────────────
-const getTomTomStyle = (isDark) => {
-  if (isDark) {
-    return `https://api.tomtom.com/map/1/style/22.2.1-1/basic_night.json?key=${KEY}`;
-  }
-  return `https://api.tomtom.com/map/1/style/22.2.1-1/basic_main.json?key=${KEY}`;
-};
+// ─── Estilo Mapbox conforme dark/light ───────────────────────────────────────
+const getMapboxStyle = (isDark) => (
+  isDark
+    ? "mapbox://styles/mapbox/navigation-night-v1"
+    : "mapbox://styles/mapbox/navigation-day-v1"
+);
 
 // ─── Detecta mobile ───────────────────────────────────────────────────────────
 const isMobileDevice = () =>
@@ -104,24 +101,6 @@ const openNativeNavigation = (destLat, destLon, destName, mode = 'walk') => {
   }
 };
 
-// ─── SDK singleton GLOBAL (evita conflito com TomTomMap.jsx) ─────────────────
-const loadSDK = () => {
-  if (window.__ttSdkPromise) return window.__ttSdkPromise;
-  window.__ttSdkPromise = new Promise((res, rej) => {
-    if (window.tt) { res(window.tt); return; }
-    const l = document.createElement('link');
-    l.rel = 'stylesheet';
-    l.href = 'https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/6.25.0/maps/maps.css';
-    document.head.appendChild(l);
-    const s = document.createElement('script');
-    s.src = 'https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/6.25.0/maps/maps-web.min.js';
-    s.onload = () => res(window.tt);
-    s.onerror = () => rej(new Error('Falha ao carregar TomTom SDK'));
-    document.head.appendChild(s);
-  });
-  return window.__ttSdkPromise;
-};
-
 // ─── Validação de coords ──────────────────────────────────────────────────────
 const isValidCoord = (lat, lon) =>
   typeof lat === 'number' && typeof lon === 'number' &&
@@ -131,8 +110,9 @@ const isValidCoord = (lat, lon) =>
 
 // ─── API calls com AbortController ───────────────────────────────────────────
 const geocode = async (addr, signal) => {
+  if (!TOMTOM_KEY) throw new Error('Chave TomTom ausente para geocodificação. Configure VITE_TOMTOM_API_KEY na Vercel.');
   const r = await fetch(
-    `https://api.tomtom.com/search/2/geocode/${encodeURIComponent(addr)}.json?key=${KEY}&countrySet=BR&limit=1`,
+    `https://api.tomtom.com/search/2/geocode/${encodeURIComponent(addr)}.json?key=${TOMTOM_KEY}&countrySet=BR&limit=1`,
     { signal }
   );
   if (!r.ok) throw new Error(`Geocode HTTP ${r.status}`);
@@ -144,6 +124,7 @@ const geocode = async (addr, signal) => {
 };
 
 const getRoute = async (o, d, signal, mode = 'walk') => {
+  if (!TOMTOM_KEY) throw new Error('Chave TomTom ausente para calcular rota. Configure VITE_TOMTOM_API_KEY na Vercel.');
   if (!isValidCoord(o.lat, o.lon))
     throw new Error(`Origem inválida (lat=${o.lat}, lon=${o.lon}). Verifique sua localização.`);
   if (!isValidCoord(d.lat, d.lon))
@@ -153,7 +134,7 @@ const getRoute = async (o, d, signal, mode = 'walk') => {
   const routeType = travelMode === 'pedestrian' ? 'shortest' : 'fastest';
   const url =
     `https://api.tomtom.com/routing/1/calculateRoute/${o.lat},${o.lon}:${d.lat},${d.lon}/json` +
-    `?key=${KEY}&travelMode=${travelMode}&routeType=${routeType}&traffic=true&instructionsType=tagged&language=pt-BR`;
+    `?key=${TOMTOM_KEY}&travelMode=${travelMode}&routeType=${routeType}&traffic=true&instructionsType=tagged&language=pt-BR`;
 
   const r = await fetch(url, { signal });
   if (!r.ok) {
@@ -272,8 +253,8 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
 
     (async () => {
       try {
-        if (!KEY) {
-          throw new Error('Chave TomTom ausente. Configure VITE_TOMTOM_API_KEY na Vercel e faça redeploy.');
+        if (!MAPBOX_KEY) {
+          throw new Error('Chave Mapbox ausente. Configure VITE_MAPBOX_TOKEN na Vercel e faça redeploy.');
         }
         setLoadMsg('Localizando pontos…');
 
@@ -325,53 +306,72 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── FASE 2: iniciar mapa (aguarda SDK + coords) ─────────────────────────
+  // ── FASE 2: iniciar mapa Mapbox (aguarda coords) ───────────────────────
   useEffect(() => {
     let map = null;
     let alive = true;
 
     (async () => {
       try {
-        const [tt] = await Promise.all([loadSDK(), coordsReady.current]);
+        await coordsReady.current;
         if (!alive || !mapElRef.current) return;
 
+        if (!MAPBOX_KEY) {
+          throw new Error('Chave Mapbox ausente. Configure VITE_MAPBOX_TOKEN na Vercel e faça redeploy.');
+        }
+
         const o = origRef.current || { lat: -15.7934, lon: -47.8823 };
+        mapboxgl.accessToken = MAPBOX_KEY;
 
-        // ✅ FIX: usa estilo night para dark mode, main para light
-        const mapStyle = getTomTomStyle(isDark);
-
-        map = tt.map({
-          key: KEY,
+        map = new mapboxgl.Map({
           container: mapElRef.current,
+          style: getMapboxStyle(isDark),
           center: [o.lon, o.lat],
-          zoom: 17.5,      // ✅ FIX: zoom navegação
-          pitch: 60,       // ✅ FIX: pitch 3D real
+          zoom: 17.5,
+          pitch: 60,
           bearing: 0,
-          style: mapStyle,
-          language: 'pt-BR',
           attributionControl: false,
+          cooperativeGestures: false,
+          language: 'pt-BR',
         });
+
         mapRef.current = map;
-        map.addControl(new tt.NavigationControl({ showZoom: true, showCompass: true }), 'bottom-right');
+        map.addControl(new mapboxgl.NavigationControl({ showZoom: true, showCompass: true }), 'bottom-right');
 
         map.on('load', () => {
           if (!alive) return;
-          // 3D Buildings
+
+          // Prédios 3D do estilo Mapbox. Se o estilo não tiver composite/building, ignora sem quebrar.
           try {
-            map.addLayer({
-              id: '3d-buildings', type: 'fill-extrusion',
-              source: 'vectorTiles', 'source-layer': 'Building',
-              paint: {
-                'fill-extrusion-color': isDark
-                  ? ['interpolate', ['linear'], ['get', 'height'],
-                    0, '#0d1117', 20, '#0f1923', 50, '#0e2040', 100, '#0a1535']
-                  : ['interpolate', ['linear'], ['get', 'height'],
-                    0, '#d4d8e0', 20, '#c8cdd8', 50, '#b0b8c8', 100, '#9aa5bb'],
-                'fill-extrusion-height': ['coalesce', ['get', 'height'], 10],
-                'fill-extrusion-base': ['coalesce', ['get', 'min_height'], 0],
-                'fill-extrusion-opacity': 0.85,
-              },
-            });
+            if (map.getSource('composite') && !map.getLayer('3d-buildings')) {
+              const layers = map.getStyle().layers || [];
+              const labelLayerId = layers.find(
+                (layer) => layer.type === 'symbol' && layer.layout?.['text-field']
+              )?.id;
+
+              map.addLayer({
+                id: '3d-buildings',
+                source: 'composite',
+                'source-layer': 'building',
+                filter: ['==', 'extrude', 'true'],
+                type: 'fill-extrusion',
+                minzoom: 14,
+                paint: {
+                  'fill-extrusion-color': isDark ? '#151b24' : '#d9dde6',
+                  'fill-extrusion-height': [
+                    'interpolate', ['linear'], ['zoom'],
+                    14, 0,
+                    16, ['get', 'height'],
+                  ],
+                  'fill-extrusion-base': [
+                    'interpolate', ['linear'], ['zoom'],
+                    14, 0,
+                    16, ['get', 'min_height'],
+                  ],
+                  'fill-extrusion-opacity': isDark ? 0.65 : 0.55,
+                },
+              }, labelLayerId);
+            }
           } catch (_) { }
 
           if (destRef.current) addDestPin(map, destRef.current);
@@ -379,7 +379,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
           setMapReady(true);
         });
       } catch (e) {
-        if (alive) { setErr(e.message || 'Falha ao carregar mapa'); setLoading(false); }
+        if (alive) { setErr(e.message || 'Falha ao carregar mapa Mapbox'); setLoading(false); }
       }
     })();
 
@@ -477,7 +477,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
 
   // Marcadores ────────────────────────────────────────────────────────────────
   const addDestPin = useCallback((m, d) => {
-    if (!window.tt) return;
+    if (!m) return;
     const el = document.createElement('div');
     el.innerHTML = `
       <div style="display:flex;flex-direction:column;align-items:center;">
@@ -488,11 +488,11 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
           <span style="transform:rotate(45deg);font-size:18px;">${route.isWalk ? '🏁' : navigationMode === 'motorcycle' ? '🏍️' : '🚗'}</span>
         </div>
       </div>`;
-    new window.tt.Marker({ element: el, anchor: 'bottom' }).setLngLat([d.lon, d.lat]).addTo(m);
+    new mapboxgl.Marker({ element: el, anchor: 'bottom' }).setLngLat([d.lon, d.lat]).addTo(m);
   }, [route.isWalk, navigationMode]);
 
   const addUserPin = useCallback((m, pos) => {
-    if (!window.tt || markerRef.current) return;
+    if (!m || markerRef.current) return;
     const el = document.createElement('div');
     el.style.cssText = 'position:relative;width:36px;height:36px;';
     el.innerHTML = `
@@ -504,7 +504,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
         <svg width="12" height="12" viewBox="0 0 24 24" fill="white"><path d="M12 2L7 21l5-3.5 5 3.5z"/></svg>
       </div>
       <style>@keyframes wpu{0%{transform:scale(1);opacity:.7}100%{transform:scale(3.5);opacity:0}}</style>`;
-    markerRef.current = new window.tt.Marker({ element: el, anchor: 'center' }).setLngLat([pos.lon, pos.lat]).addTo(m);
+    markerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([pos.lon, pos.lat]).addTo(m);
   }, []);
 
   // Instrução ─────────────────────────────────────────────────────────────────
@@ -707,7 +707,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
               color: C, fontSize: 13, fontWeight: 700, letterSpacing: 1,
               textShadow: isDark ? `0 0 12px rgba(0,243,255,0.6)` : 'none'
             }}>{loadMsg}</p>
-            <p style={{ color: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.4)', fontSize: 11 }}>TomTom SDK · Navegação {modeLabel} 3D</p>
+            <p style={{ color: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.4)', fontSize: 11 }}>Mapbox GL · Navegação {modeLabel} 3D</p>
             <style>{`@keyframes spinNeon{to{transform:rotate(360deg)}}`}</style>
           </div>
         )}
