@@ -246,3 +246,160 @@ export const getAllowedLinesForStops = async (stops = [], limit = 5) => {
     routeGroups,
   };
 };
+
+const SEMOB_ROUTES_CACHE_KEY = 'localizabus_semob_routes_v1';
+const SEMOB_ROUTES_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
+
+const normalizeRouteLineCode = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .replace('linha', '')
+    .replace(/[^0-9a-z.]/g, '')
+    .replace(/^0+(?=\d)/, '')
+    .trim();
+
+const formatRouteColor = (value) => {
+  const color = String(value || '').replace('#', '').trim();
+
+  if (/^[0-9a-fA-F]{6}$/.test(color)) {
+    return `#${color}`;
+  }
+
+  return null;
+};
+
+const getRouteShortName = (route) => {
+  return (
+    route?.shortName ||
+    route?.short_name ||
+    route?.routeShortName ||
+    route?.id ||
+    ''
+  );
+};
+
+const getRouteLongName = (route) => {
+  return (
+    route?.longName ||
+    route?.long_name ||
+    route?.routeLongName ||
+    route?.desc ||
+    route?.description ||
+    ''
+  );
+};
+
+const mapSemobRoute = (route) => {
+  const shortName = getRouteShortName(route);
+  const longName = getRouteLongName(route);
+
+  const routeColor =
+    formatRouteColor(route?.color) ||
+    formatRouteColor(route?.routeColor) ||
+    formatRouteColor(route?.route_color);
+
+  const textColor =
+    formatRouteColor(route?.textColor) ||
+    formatRouteColor(route?.routeTextColor) ||
+    formatRouteColor(route?.route_text_color);
+
+  return {
+    id: route?.id || shortName,
+    line: shortName,
+    name: longName || `Linha ${shortName}`,
+    shortName,
+    longName,
+    color: routeColor,
+    textColor,
+    agencyName: route?.agencyName || route?.agency_name || 'SEMOB/DF',
+    raw: route,
+  };
+};
+
+export const getAllSemobRoutes = async ({ forceRefresh = false } = {}) => {
+  if (!forceRefresh) {
+    try {
+      const cached = localStorage.getItem(SEMOB_ROUTES_CACHE_KEY);
+
+      if (cached) {
+        const parsed = JSON.parse(cached);
+
+        if (
+          parsed?.timestamp &&
+          Date.now() - parsed.timestamp < SEMOB_ROUTES_CACHE_TTL &&
+          Array.isArray(parsed.data)
+        ) {
+          return parsed.data;
+        }
+      }
+    } catch {
+      // ignora cache quebrado
+    }
+  }
+
+  try {
+    const response = await axios.get('/api/semob-routes', {
+      timeout: 20000,
+    });
+
+    const routes = Array.isArray(response.data)
+      ? response.data.map(mapSemobRoute).filter((route) => route.line)
+      : [];
+
+    try {
+      localStorage.setItem(
+        SEMOB_ROUTES_CACHE_KEY,
+        JSON.stringify({
+          timestamp: Date.now(),
+          data: routes,
+        })
+      );
+    } catch {
+      // ignora erro de storage
+    }
+
+    return routes;
+  } catch (error) {
+    console.warn('[SEMOB routes]', error?.message || error);
+    return [];
+  }
+};
+
+export const searchSemobRoutesByLine = async (query, { limit = 20 } = {}) => {
+  const safeQuery = String(query || '').trim();
+
+  if (!safeQuery) return [];
+
+  const normalizedQuery = normalizeRouteLineCode(safeQuery);
+  const queryWithoutDot = normalizedQuery.replace(/\./g, '');
+
+  const routes = await getAllSemobRoutes();
+
+  return routes
+    .filter((route) => {
+      const line = String(route.line || '');
+      const normalizedLine = normalizeRouteLineCode(line);
+      const lineWithoutDot = normalizedLine.replace(/\./g, '');
+
+      return (
+        normalizedLine.startsWith(normalizedQuery) ||
+        lineWithoutDot.startsWith(queryWithoutDot) ||
+        line.startsWith(safeQuery)
+      );
+    })
+    .sort((a, b) => {
+      const aLine = normalizeRouteLineCode(a.line);
+      const bLine = normalizeRouteLineCode(b.line);
+
+      const aExact = aLine === normalizedQuery ? 0 : 1;
+      const bExact = bLine === normalizedQuery ? 0 : 1;
+
+      if (aExact !== bExact) return aExact - bExact;
+
+      return aLine.localeCompare(bLine, 'pt-BR', {
+        numeric: true,
+        sensitivity: 'base',
+      });
+    })
+    .slice(0, limit);
+};
