@@ -1,108 +1,83 @@
 // src/comp/WalkingMapModal.jsx
-// Navegação Carro/Moto/Caminhada com MapLibre GL JS + OpenFreeMap
-// Mantém o resto do site intacto e usa o TomTom/ORS apenas para cálculo de rota quando necessário.
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+// ✅ FIX: Dark mode detection → TomTom night/day style automático
+// ✅ FIX: Navegação 3D real pitch:60, zoom:17.5, bearing da rota/GPS
+// ✅ FIX: Strip de tags HTML nas instruções (<street>, <b>, etc.)
+// ✅ FIX: Painel inferior com contraste correto dark/light
+// ✅ FIX: Mapa inicia em modo navegação (pitch 60, centrado no usuário/origem)
+// ✅ FIX: Carro/Moto recebem navigationMode, fromLat/fromLon, toLat/toLon corretamente
+// ✅ FIX: Race condition resolvida — mapa aguarda coords via Promise
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
 import {
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  Bike,
-  Car,
-  Crosshair,
-  ExternalLink,
-  Footprints,
-  LocateFixed,
-  MapPin,
-  Maximize2,
-  Minimize2,
-  Navigation,
-  RotateCcw,
-  Square,
-  X,
+  X, Footprints, Navigation, ArrowLeft, ArrowRight,
+  ArrowUp, RotateCcw, Play, Square, MapPin, Maximize2, Minimize2,
+  Smartphone, Car, Bike
 } from 'lucide-react';
-import { ORS_API_KEY, TOMTOM_API_KEY } from '../config/apiKeys';
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
+import { MAPBOX_TOKEN, TOMTOM_API_KEY, ORS_API_KEY } from "../config/apiKeys";
 
-const ORS_KEY = ORS_API_KEY;
+const MAPBOX_KEY = MAPBOX_TOKEN;
 const TOMTOM_KEY = TOMTOM_API_KEY;
-const OPENFREEMAP_LIGHT = 'https://tiles.openfreemap.org/styles/liberty';
-const OPENFREEMAP_DARK = 'https://tiles.openfreemap.org/styles/dark';
+const ORS_KEY = ORS_API_KEY;
 
-const isValidCoord = (lat, lon) =>
-  Number.isFinite(Number(lat)) &&
-  Number.isFinite(Number(lon)) &&
-  Number(lat) >= -90 &&
-  Number(lat) <= 90 &&
-  Number(lon) >= -180 &&
-  Number(lon) <= 180 &&
-  !(Math.abs(Number(lat)) < 0.001 && Math.abs(Number(lon)) < 0.001);
 
+// ─── Utils ────────────────────────────────────────────────────────────────────
 const hav = (a, b, c, d) => {
-  const R = 6371000;
-  const dLat = (c - a) * Math.PI / 180;
-  const dLon = (d - b) * Math.PI / 180;
-  const x =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(a * Math.PI / 180) * Math.cos(c * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  const R = 6371000, dL = (c - a) * Math.PI / 180, dO = (d - b) * Math.PI / 180;
+  const x = Math.sin(dL / 2) ** 2 + Math.cos(a * Math.PI / 180) * Math.cos(c * Math.PI / 180) * Math.sin(dO / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 };
-
 const bear = (a, b, c, d) => {
-  const dLon = (d - b) * Math.PI / 180;
-  const y = Math.sin(dLon) * Math.cos(c * Math.PI / 180);
-  const x =
-    Math.cos(a * Math.PI / 180) * Math.sin(c * Math.PI / 180) -
-    Math.sin(a * Math.PI / 180) * Math.cos(c * Math.PI / 180) * Math.cos(dLon);
+  const dO = (d - b) * Math.PI / 180;
+  const y = Math.sin(dO) * Math.cos(c * Math.PI / 180);
+  const x = Math.cos(a * Math.PI / 180) * Math.sin(c * Math.PI / 180) - Math.sin(a * Math.PI / 180) * Math.cos(c * Math.PI / 180) * Math.cos(dO);
   return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
 };
+const dist = m => m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
+const mins = s => { if (s < 60) return `${s}s`; const m = Math.floor(s / 60), r = s % 60; return r ? `${m}min ${r}s` : `${m} min`; };
 
-const formatDistance = (meters = 0) => {
-  const m = Math.max(0, Number(meters) || 0);
-  if (m < 1000) return `${Math.round(m)} m`;
-  return `${(m / 1000).toFixed(m < 10000 ? 1 : 0)} km`;
+// ─── Strip HTML tags das instruções (remove <street>, </street>, <b>, etc.) ───
+const stripHtmlTags = (str) => {
+  if (!str) return '';
+  return String(str)
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 };
 
-const formatDuration = (seconds = 0) => {
-  const s = Math.max(0, Math.round(Number(seconds) || 0));
-  if (s < 60) return `${s}s`;
-  const min = Math.round(s / 60);
-  if (min < 60) return `${min} min`;
-  const h = Math.floor(min / 60);
-  const rest = min % 60;
-  return rest ? `${h}h ${rest}min` : `${h}h`;
+// ─── Detecta dark mode ────────────────────────────────────────────────────────
+const getIsDarkMode = (isDarkProp) => {
+  // Prop explícita tem prioridade
+  if (typeof isDarkProp === 'boolean') return isDarkProp;
+  // Checa classe no <html> (Tailwind dark mode)
+  if (document.documentElement.classList.contains('dark')) return true;
+  // Checa atributo data-theme
+  const theme = document.documentElement.getAttribute('data-theme');
+  if (theme === 'dark') return true;
+  if (theme === 'light') return false;
+  // Fallback: preferência do sistema
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
 };
 
-const stripHtmlTags = (text) => String(text || '')
-  .replace(/<[^>]+>/g, '')
-  .replace(/&amp;/g, '&')
-  .replace(/&lt;/g, '<')
-  .replace(/&gt;/g, '>')
-  .replace(/&quot;/g, '"')
-  .replace(/&#39;/g, "'")
-  .replace(/\s{2,}/g, ' ')
-  .trim();
-
-const getIsDarkMode = (explicit) => {
-  if (typeof explicit === 'boolean') return explicit;
-  if (typeof document !== 'undefined') {
-    if (document.documentElement.classList.contains('dark')) return true;
-    const theme = document.documentElement.getAttribute('data-theme');
-    if (theme === 'dark') return true;
-    if (theme === 'light') return false;
+// ─── Estilo TomTom conforme dark/light ────────────────────────────────────────
+const getTomTomStyle = (isDark) => {
+  if (isDark) {
+    return `https://api.tomtom.com/map/1/style/22.2.1-1/basic_night.json?key=${KEY}`;
   }
-  return typeof window !== 'undefined'
-    ? window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false
-    : false;
+  return `https://api.tomtom.com/map/1/style/22.2.1-1/basic_main.json?key=${KEY}`;
 };
 
-const getProfile = (mode) => {
-  if (mode === 'walk') return 'foot-walking';
-  // ORS não tem perfil específico de moto. Para moto usamos rota de carro.
-  return 'driving-car';
-};
+// ─── Detecta mobile ───────────────────────────────────────────────────────────
+const isMobileDevice = () =>
+  /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
 
+// ─── Deep Link para app nativo ────────────────────────────────────────────────
 const getExternalTravelMode = (mode) => {
   if (mode === 'car' || mode === 'motorcycle') return { google: 'driving', apple: 'd' };
   return { google: 'walking', apple: 'w' };
@@ -113,814 +88,976 @@ const openNativeNavigation = (destLat, destLon, destName, mode = 'walk') => {
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
   const externalMode = getExternalTravelMode(mode);
   const gmaps = `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLon}&travelmode=${externalMode.google}`;
-
   if (isIOS) {
     const apple = `maps://?daddr=${destLat},${destLon}&dirflg=${externalMode.apple}`;
     const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = apple;
+    iframe.style.display = 'none'; iframe.src = apple;
     document.body.appendChild(iframe);
-    setTimeout(() => {
-      try { document.body.removeChild(iframe); } catch (_) { }
-      window.open(gmaps, '_blank', 'noopener');
-    }, 700);
-    return;
+    setTimeout(() => { document.body.removeChild(iframe); window.open(gmaps, '_blank', 'noopener'); }, 800);
+  } else {
+    const a = document.createElement('a');
+    a.href = `geo:${destLat},${destLon}?q=${destLat},${destLon}(${label})`;
+    a.click();
+    setTimeout(() => window.open(gmaps, '_blank', 'noopener'), 800);
   }
-
-  const a = document.createElement('a');
-  a.href = `geo:${destLat},${destLon}?q=${destLat},${destLon}(${label})`;
-  a.click();
-  setTimeout(() => window.open(gmaps, '_blank', 'noopener'), 700);
 };
 
-const geocodeWithTomTom = async (addr, signal) => {
-  if (!TOMTOM_KEY) throw new Error('Coordenadas do destino ausentes. Pesquise um endereço válido ou configure a chave TomTom para geocodificação.');
+// ─── SDK singleton GLOBAL (evita conflito com TomTomMap.jsx) ─────────────────
+const loadSDK = () => {
+  if (window.__ttSdkPromise) return window.__ttSdkPromise;
+  window.__ttSdkPromise = new Promise((res, rej) => {
+    if (window.tt) { res(window.tt); return; }
+    const l = document.createElement('link');
+    l.rel = 'stylesheet';
+    l.href = 'https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/6.25.0/maps/maps.css';
+    document.head.appendChild(l);
+    const s = document.createElement('script');
+    s.src = 'https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/6.25.0/maps/maps-web.min.js';
+    s.onload = () => res(window.tt);
+    s.onerror = () => rej(new Error('Falha ao carregar TomTom SDK'));
+    document.head.appendChild(s);
+  });
+  return window.__ttSdkPromise;
+};
 
-  const response = await fetch(
-    `https://api.tomtom.com/search/2/geocode/${encodeURIComponent(addr)}.json?key=${TOMTOM_KEY}&countrySet=BR&limit=1`,
+// ─── Validação de coords ──────────────────────────────────────────────────────
+const isValidCoord = (lat, lon) =>
+  typeof lat === 'number' && typeof lon === 'number' &&
+  isFinite(lat) && isFinite(lon) &&
+  lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180 &&
+  !(Math.abs(lat) < 0.001 && Math.abs(lon) < 0.001);
+
+// ─── API calls com AbortController ───────────────────────────────────────────
+const geocode = async (addr, signal) => {
+  const r = await fetch(
+    `https://api.tomtom.com/search/2/geocode/${encodeURIComponent(addr)}.json?key=${KEY}&countrySet=BR&limit=1`,
     { signal }
   );
-
-  if (!response.ok) throw new Error(`Erro ao localizar endereço (HTTP ${response.status}).`);
-
-  const data = await response.json();
-  const pos = data.results?.[0]?.position;
-
-  if (!pos || !isValidCoord(pos.lat, pos.lon)) {
-    throw new Error(`Não encontrei coordenadas válidas para: ${addr}`);
-  }
-
-  return { lat: Number(pos.lat), lon: Number(pos.lon) };
+  if (!r.ok) throw new Error(`Geocode HTTP ${r.status}`);
+  const d = await r.json();
+  const p = d.results?.[0]?.position;
+  if (!p) throw new Error(`Endereço não encontrado: ${addr}`);
+  if (!isValidCoord(p.lat, p.lon)) throw new Error(`Coordenadas inválidas para: ${addr}`);
+  return { lat: p.lat, lon: p.lon };
 };
 
-const routeFromOrs = async (origin, destination, signal, mode) => {
-  if (!ORS_KEY) throw new Error('Chave OpenRouteService ausente. Configure VITE_ORS_API_KEY na Vercel.');
+const getRoute = async (o, d, signal, mode = 'walk') => {
+  if (!isValidCoord(o.lat, o.lon))
+    throw new Error(`Origem inválida (lat=${o.lat}, lon=${o.lon}). Verifique sua localização.`);
+  if (!isValidCoord(d.lat, d.lon))
+    throw new Error(`Destino inválido (lat=${d.lat}, lon=${d.lon}). Verifique o endereço.`);
 
-  const profile = getProfile(mode);
-  const response = await fetch(`https://api.openrouteservice.org/v2/directions/${profile}/geojson`, {
-    method: 'POST',
-    signal,
-    headers: {
-      Authorization: ORS_KEY,
-      'Content-Type': 'application/json',
-      Accept: 'application/json, application/geo+json',
-    },
-    body: JSON.stringify({
-      coordinates: [[origin.lon, origin.lat], [destination.lon, destination.lat]],
-      instructions: true,
-      language: 'pt',
-    }),
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw new Error(`Erro ao calcular rota ORS (HTTP ${response.status}): ${text.slice(0, 120)}`);
-  }
-
-  const data = await response.json();
-  const feature = data.features?.[0];
-  const pts = feature?.geometry?.coordinates || [];
-  const summary = feature?.properties?.summary || {};
-  const steps = feature?.properties?.segments?.flatMap(segment => segment.steps || []) || [];
-
-  if (!pts.length) throw new Error('Não encontrei uma rota válida entre os pontos.');
-
-  let currentOffset = 0;
-  const instrs = steps.map((step) => {
-    const item = {
-      msg: stripHtmlTags(step.instruction || 'Siga pela rota destacada'),
-      man: String(step.type ?? '').toLowerCase(),
-      off: currentOffset,
-      dist: Number(step.distance || 0),
-      duration: Number(step.duration || 0),
-    };
-    currentOffset += Number(step.distance || 0);
-    return item;
-  });
-
-  const initialBearing = pts.length > 1 ? bear(pts[0][1], pts[0][0], pts[1][1], pts[1][0]) : 0;
-
-  return {
-    pts,
-    instrs: instrs.length ? instrs : [{ msg: 'Siga pela rota destacada', man: 'straight', off: 0 }],
-    totalM: Number(summary.distance || 0),
-    totalS: Number(summary.duration || 0),
-    geo: feature,
-    initialBearing,
-    provider: 'OpenRouteService',
-  };
-};
-
-const routeFromTomTom = async (origin, destination, signal, mode) => {
-  if (!TOMTOM_KEY) throw new Error('Chave TomTom ausente para calcular rota.');
-
-  const travelMode = mode === 'walk' ? 'pedestrian' : mode === 'motorcycle' ? 'motorcycle' : 'car';
+  const travelMode = mode === 'motorcycle' ? 'motorcycle' : mode === 'car' ? 'car' : 'pedestrian';
   const routeType = travelMode === 'pedestrian' ? 'shortest' : 'fastest';
   const url =
-    `https://api.tomtom.com/routing/1/calculateRoute/${origin.lat},${origin.lon}:${destination.lat},${destination.lon}/json` +
-    `?key=${TOMTOM_KEY}&travelMode=${travelMode}&routeType=${routeType}&traffic=true&instructionsType=tagged&language=pt-BR`;
+    `https://api.tomtom.com/routing/1/calculateRoute/${o.lat},${o.lon}:${d.lat},${d.lon}/json` +
+    `?key=${KEY}&travelMode=${travelMode}&routeType=${routeType}&traffic=true&instructionsType=tagged&language=pt-BR`;
 
-  const response = await fetch(url, { signal });
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    throw new Error(`Erro ao calcular rota TomTom (HTTP ${response.status}): ${body.slice(0, 120)}`);
+  const r = await fetch(url, { signal });
+  if (!r.ok) {
+    const body = await r.text().catch(() => '');
+    throw new Error(`Erro ao calcular rota (HTTP ${r.status}): ${body.slice(0, 120)}`);
   }
-
-  const data = await response.json();
+  const data = await r.json();
   const route = data.routes?.[0];
-  if (!route) throw new Error('Nenhuma rota encontrada entre os pontos.');
+  if (!route) throw new Error('Nenhuma rota encontrada entre os pontos. Tente ajustar o destino.');
 
-  const pts = route.legs?.flatMap(leg => leg.points || []).map(p => [p.longitude, p.latitude]) || [];
+  const pts = route.legs[0].points.map(p => [p.longitude, p.latitude]);
+
+  // ✅ FIX: Strip de tags HTML nas instruções
   const instrs = (route.guidance?.instructions || []).map(i => ({
-    msg: stripHtmlTags(i.message || i.street || 'Siga pela rota destacada'),
-    man: String(i.maneuver || 'straight').toLowerCase(),
-    off: Number(i.routeOffsetInMeters || 0),
-    dist: Number(i.travelTimeInSeconds || 0),
+    msg: stripHtmlTags(i.message || i.street || 'Continue em frente'),
+    man: i.maneuver || 'STRAIGHT',
+    off: i.routeOffsetInMeters || 0,
+    dist: i.travelTimeInSeconds || 0,
   }));
 
-  const initialBearing = pts.length > 1 ? bear(pts[0][1], pts[0][0], pts[1][1], pts[1][0]) : 0;
+  // ✅ Calcula bearing inicial da rota (primeiros 2 pontos)
+  let initialBearing = 0;
+  if (pts.length >= 2) {
+    initialBearing = bear(pts[0][1], pts[0][0], pts[1][1], pts[1][0]);
+  }
 
   return {
-    pts,
-    instrs: instrs.length ? instrs : [{ msg: 'Siga pela rota destacada', man: 'straight', off: 0 }],
-    totalM: Number(route.summary?.lengthInMeters || 0),
-    totalS: Number(route.summary?.travelTimeInSeconds || 0),
-    geo: { type: 'Feature', geometry: { type: 'LineString', coordinates: pts }, properties: {} },
+    pts, instrs,
+    totalM: route.summary.lengthInMeters,
+    totalS: route.summary.travelTimeInSeconds,
+    geo: { type: 'Feature', geometry: { type: 'LineString', coordinates: pts } },
     initialBearing,
-    provider: 'TomTom Routing',
   };
 };
 
-const calculateRoute = async (origin, destination, signal, mode) => {
-  if (!isValidCoord(origin.lat, origin.lon)) throw new Error('Origem inválida. Verifique sua localização.');
-  if (!isValidCoord(destination.lat, destination.lon)) throw new Error('Destino inválido. Verifique o endereço.');
-
-  if (ORS_KEY) return routeFromOrs(origin, destination, signal, mode);
-  return routeFromTomTom(origin, destination, signal, mode);
+const ManIcon = ({ type, size = 10 }) => {
+  const t = (type || '').toLowerCase();
+  const cls = 'text-white';
+  if (t.includes('left')) return <ArrowLeft className={cls} width={size} height={size} strokeWidth={3} />;
+  if (t.includes('right')) return <ArrowRight className={cls} width={size} height={size} strokeWidth={3} />;
+  if (t.includes('uturn')) return <RotateCcw className={cls} width={size} height={size} strokeWidth={3} />;
+  return <ArrowUp className={cls} width={size} height={size} strokeWidth={3} />;
 };
 
-const ManIcon = ({ type, size = 28 }) => {
-  const text = String(type || '').toLowerCase();
-  if (text.includes('left') || text === '0' || text === '6') return <ArrowLeft width={size} height={size} strokeWidth={3} />;
-  if (text.includes('right') || text === '1' || text === '7') return <ArrowRight width={size} height={size} strokeWidth={3} />;
-  if (text.includes('uturn') || text.includes('turnaround')) return <RotateCcw width={size} height={size} strokeWidth={3} />;
-  return <ArrowUp width={size} height={size} strokeWidth={3} />;
-};
-
-const VehiclePin = ({ mode = 'walk', dark = true }) => {
-  const icon = mode === 'car' ? '🚗' : mode === 'motorcycle' ? '🏍️' : '➤';
-  return `
-    <div style="position:relative;width:52px;height:52px;display:flex;align-items:center;justify-content:center;">
-      <div style="position:absolute;inset:0;border-radius:999px;background:${dark ? 'rgba(0,243,255,.16)' : 'rgba(37,99,235,.16)'};box-shadow:0 0 28px ${dark ? 'rgba(0,243,255,.45)' : 'rgba(37,99,235,.28)'};animation:lbPulse 2s infinite ease-out;"></div>
-      <div style="position:relative;width:38px;height:38px;border-radius:999px;background:${dark ? '#07111f' : '#ffffff'};border:3px solid #00f3ff;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 22px rgba(0,0,0,.38);font-size:19px;transform:rotate(0deg);">
-        ${icon}
-      </div>
-      <style>@keyframes lbPulse{0%{transform:scale(.9);opacity:.9}100%{transform:scale(2.1);opacity:0}}</style>
-    </div>`;
-};
-
-const DestPin = ({ mode = 'walk' }) => {
-  const icon = mode === 'car' ? '🚗' : mode === 'motorcycle' ? '🏍️' : '🏁';
-  return `
-    <div style="display:flex;flex-direction:column;align-items:center;">
-      <div style="width:38px;height:38px;border-radius:50% 50% 50% 0;background:linear-gradient(135deg,#00f3ff,#5b36ff);border:3px solid #fff;box-shadow:0 8px 24px rgba(0,0,0,.34);transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;">
-        <span style="transform:rotate(45deg);font-size:16px;">${icon}</span>
-      </div>
-    </div>`;
-};
-
-const getModeLabel = (mode) => mode === 'motorcycle' ? 'moto' : mode === 'car' ? 'carro' : 'caminhada';
-
+// ─── Componente ───────────────────────────────────────────────────────────────
 const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) => {
+  // ✅ FIX: navigationMode correto para Carro/Moto — usa route.navigationMode antes de qualquer fallback
   const navigationMode = route?.navigationMode || (route?.isWalk ? 'walk' : 'walk');
   const isDrivingMode = navigationMode === 'car' || navigationMode === 'motorcycle';
-  const modeLabel = getModeLabel(navigationMode);
-  const isDark = useMemo(() => getIsDarkMode(isDarkProp), [isDarkProp]);
+  const modeLabel = route?.isWalk ? 'caminhada' : navigationMode === 'motorcycle' ? 'moto' : 'carro';
+
+  // ✅ FIX: detecta dark mode uma vez ao montar
+  const isDark = useRef(getIsDarkMode(isDarkProp)).current;
 
   const wrapRef = useRef(null);
-  const mapElRef = useRef(null);
   const mapRef = useRef(null);
-  const userMarkerRef = useRef(null);
-  const destMarkerRef = useRef(null);
+  const mapElRef = useRef(null);
+  const markerRef = useRef(null);
   const watchRef = useRef(null);
   const timerRef = useRef(null);
   const t0Ref = useRef(null);
   const lastRef = useRef(null);
   const rdRef = useRef(null);
-  const originRef = useRef(null);
+  const origRef = useRef(null);
   const destRef = useRef(null);
   const mountedRef = useRef(true);
+
+  // ✅ Promise que desbloqueia fases 2 e 3 quando coords ficam prontas
+  const coordsReady = useRef(null);
+  const coordsResolve = useRef(null);
+  if (!coordsReady.current) {
+    coordsReady.current = new Promise(res => { coordsResolve.current = res; });
+  }
 
   const [mapReady, setMapReady] = useState(false);
   const [rd, setRd] = useState(null);
   const [err, setErr] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [loadMsg, setLoadMsg] = useState('Preparando navegação…');
+  const [loadMsg, setLoadMsg] = useState('Localizando pontos…');
+
   const [nav, setNav] = useState(false);
   const [tracking, setTracking] = useState(false);
-  const [overview, setOverview] = useState(false);
-  const [fs, setFs] = useState(false);
   const [brng, setBrng] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [covered, setCovered] = useState(0);
   const [remain, setRemain] = useState(null);
   const [acc, setAcc] = useState(null);
+  const [arrived, setArrived] = useState(false);
   const [curI, setCurI] = useState(null);
   const [nextI, setNextI] = useState(null);
-  const [arrived, setArrived] = useState(false);
+  const [fs, setFs] = useState(false);
+  const [overview, setOverview] = useState(false);
+  const [bottomOpen, setBottomOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
 
-  const accent = isDrivingMode ? '#5b36ff' : '#00a8ff';
-  const routeColor = isDrivingMode ? '#6c4cff' : '#008cff';
-  const routeGlow = isDark ? '#00f3ff' : '#5b36ff';
-  const panelBg = isDark ? 'rgba(5,8,16,.92)' : 'rgba(255,255,255,.94)';
-  const panelText = isDark ? '#fff' : '#111827';
-  const panelSub = isDark ? 'rgba(255,255,255,.62)' : 'rgba(17,24,39,.58)';
-  const chipBg = isDark ? 'rgba(255,255,255,.08)' : 'rgba(17,24,39,.06)';
-  const border = isDark ? '1px solid rgba(0,243,255,.18)' : '1px solid rgba(17,24,39,.12)';
-  const styleUrl = isDark ? OPENFREEMAP_DARK : OPENFREEMAP_LIGHT;
+  useEffect(() => { setIsMobile(isMobileDevice()); }, []);
 
+  // Fullscreen ────────────────────────────────────────────────────────────────
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (!document.fullscreenElement) { await wrapRef.current?.requestFullscreen(); setFs(true); }
+      else { await document.exitFullscreen(); setFs(false); }
+    } catch (_) { setFs(false); }
+  }, []);
   useEffect(() => {
-    setIsMobile(/Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent));
+    const h = () => setFs(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', h);
+    return () => document.removeEventListener('fullscreenchange', h);
   }, []);
 
-  const setCameraNavigation = useCallback((position, bearingValue = brng, duration = 700) => {
-    const map = mapRef.current;
-    if (!map || !position) return;
-
-    map.easeTo({
-      center: [Number(position.lon), Number(position.lat)],
-      zoom: 17.6,
-      pitch: 62,
-      bearing: Number.isFinite(Number(bearingValue)) ? Number(bearingValue) : 0,
-      duration,
-      padding: { top: 90, bottom: 210, left: 0, right: 0 },
-      easing: t => t,
-    });
-  }, [brng]);
-
-  const fitRoute = useCallback((pts) => {
-    const map = mapRef.current;
-    if (!map || !pts?.length) return;
-
-    const bounds = pts.reduce(
-      (b, p) => b.extend(p),
-      new maplibregl.LngLatBounds(pts[0], pts[0])
-    );
-
-    map.fitBounds(bounds, {
-      padding: { top: 120, bottom: 220, left: 48, right: 48 },
-      duration: 800,
-      pitch: 0,
-      bearing: 0,
-    });
-  }, []);
-
-  const addOrUpdateUserPin = useCallback((pos) => {
-    const map = mapRef.current;
-    if (!map || !isValidCoord(pos.lat, pos.lon)) return;
-
-    if (!userMarkerRef.current) {
-      const el = document.createElement('div');
-      el.innerHTML = VehiclePin({ mode: navigationMode, dark: isDark });
-      userMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center', rotationAlignment: 'map' })
-        .setLngLat([pos.lon, pos.lat])
-        .addTo(map);
-      return;
-    }
-
-    userMarkerRef.current.setLngLat([pos.lon, pos.lat]);
-  }, [navigationMode, isDark]);
-
-  const addDestinationPin = useCallback((pos) => {
-    const map = mapRef.current;
-    if (!map || !isValidCoord(pos.lat, pos.lon) || destMarkerRef.current) return;
-
-    const el = document.createElement('div');
-    el.innerHTML = DestPin({ mode: navigationMode });
-    destMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'bottom' })
-      .setLngLat([pos.lon, pos.lat])
-      .addTo(map);
-  }, [navigationMode]);
-
-  const drawRoute = useCallback((data) => {
-    const map = mapRef.current;
-    if (!map || !data?.geo) return;
-
-    const source = map.getSource('lb-route');
-    if (source) {
-      source.setData(data.geo);
-      return;
-    }
-
-    map.addSource('lb-route', { type: 'geojson', data: data.geo });
-
-    map.addLayer({
-      id: 'lb-route-shadow',
-      type: 'line',
-      source: 'lb-route',
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': '#000000', 'line-width': 18, 'line-opacity': isDark ? 0.45 : 0.22, 'line-blur': 8 },
-    });
-
-    map.addLayer({
-      id: 'lb-route-glow',
-      type: 'line',
-      source: 'lb-route',
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': routeGlow, 'line-width': 12, 'line-opacity': isDark ? 0.62 : 0.35, 'line-blur': 3 },
-    });
-
-    map.addLayer({
-      id: 'lb-route-main',
-      type: 'line',
-      source: 'lb-route',
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': routeColor, 'line-width': 7, 'line-opacity': 1 },
-    });
-
-    map.addLayer({
-      id: 'lb-route-highlight',
-      type: 'line',
-      source: 'lb-route',
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': '#ffffff', 'line-width': 2, 'line-opacity': 0.65 },
-    });
-  }, [isDark, routeColor, routeGlow]);
-
-  const resolveCoords = useCallback(async (signal) => {
-    let origin = null;
-    let destination = null;
-
-    if (isValidCoord(route?.fromLat, route?.fromLon)) {
-      origin = { lat: Number(route.fromLat), lon: Number(route.fromLon) };
-    } else if (isValidCoord(userLocation?.lat, userLocation?.lon)) {
-      origin = { lat: Number(userLocation.lat), lon: Number(userLocation.lon) };
-    } else if (route?.origin) {
-      origin = await geocodeWithTomTom(route.origin, signal);
-    } else {
-      origin = { lat: -15.7934, lon: -47.8823 };
-    }
-
-    if (isValidCoord(route?.toLat, route?.toLon)) {
-      destination = {
-        lat: Number(route.toLat),
-        lon: Number(route.toLon),
-        name: route.destination || route.toStop || 'Destino',
-      };
-    } else if (isValidCoord(route?.lat, route?.lon) && !route?.isNavigationRoute) {
-      destination = { lat: Number(route.lat), lon: Number(route.lon), name: route.fromStop || 'Ponto de embarque' };
-    } else if (route?.destination) {
-      destination = { ...(await geocodeWithTomTom(route.destination, signal)), name: route.destination };
-    } else {
-      destination = { lat: -15.7801, lon: -47.9292, name: 'Destino' };
-    }
-
-    const straightDistance = hav(origin.lat, origin.lon, destination.lat, destination.lon);
-    if (straightDistance > 180000 && isDrivingMode) {
-      throw new Error('A rota parece muito distante. Verifique origem e destino.');
-    }
-
-    return { origin, destination };
-  }, [route, userLocation, isDrivingMode]);
-
+  // ── FASE 1: resolver coords ─────────────────────────────────────────────
   useEffect(() => {
     mountedRef.current = true;
-    const controller = new AbortController();
+    const abort = new AbortController();
+    const { signal } = abort;
 
     (async () => {
       try {
-        setLoading(true);
+        if (!KEY) {
+          throw new Error('Chave TomTom ausente. Configure VITE_TOMTOM_API_KEY na Vercel e faça redeploy.');
+        }
         setLoadMsg('Localizando pontos…');
 
-        const { origin, destination } = await resolveCoords(controller.signal);
+        // ✅ FIX: Origem — prioriza fromLat/fromLon (passados por Carro/Moto)
+        let o = null;
+        if (route.fromLat != null && route.fromLon != null && isValidCoord(Number(route.fromLat), Number(route.fromLon))) {
+          o = { lat: Number(route.fromLat), lon: Number(route.fromLon) };
+        } else if (userLocation && isValidCoord(userLocation.lat, userLocation.lon)) {
+          o = { lat: userLocation.lat, lon: userLocation.lon };
+        } else if (route.origin) {
+          o = await geocode(route.origin, signal);
+        } else {
+          o = { lat: -15.7934, lon: -47.8823 }; // fallback centro Brasília
+        }
+
+        // ✅ FIX: Destino — prioriza toLat/toLon (passados por Carro/Moto)
+        let d = null;
+        if (route.toLat != null && route.toLon != null && isValidCoord(Number(route.toLat), Number(route.toLon))) {
+          d = { lat: Number(route.toLat), lon: Number(route.toLon), name: route.destination || route.toStop || 'Destino' };
+        } else if (route.isNavigationRoute && route.destination) {
+          d = { ...(await geocode(route.destination, signal)), name: route.destination };
+        } else if (route.lat && route.lon && isValidCoord(Number(route.lat), Number(route.lon))) {
+          d = { lat: Number(route.lat), lon: Number(route.lon), name: route.fromStop || 'Ponto de embarque' };
+        } else if (route.isWalk && route.destination) {
+          d = { ...(await geocode(route.destination, signal)), name: route.destination };
+        } else if (route.destination) {
+          d = { ...(await geocode(route.destination, signal)), name: route.destination };
+        } else {
+          d = { lat: -15.7801, lon: -47.9292, name: 'Destino' };
+        }
+
+        const straightDistance = hav(o.lat, o.lon, d.lat, d.lon);
+        if (straightDistance > 180000 && (navigationMode === 'car' || navigationMode === 'motorcycle')) {
+          throw new Error('A rota ficou muito distante. Confira se a origem e o destino estão corretos ou escolha uma sugestão da lista.');
+        }
+
         if (!mountedRef.current) return;
+        origRef.current = o;
+        destRef.current = d;
+        coordsResolve.current?.();
 
-        originRef.current = origin;
-        destRef.current = destination;
-
-        const map = new maplibregl.Map({
-          container: mapElRef.current,
-          style: styleUrl,
-          center: [origin.lon, origin.lat],
-          zoom: 17.2,
-          pitch: 62,
-          bearing: 0,
-          attributionControl: false,
-        });
-
-        mapRef.current = map;
-        map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right');
-        map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left');
-
-        map.on('load', () => {
-          if (!mountedRef.current) return;
-          addOrUpdateUserPin(origin);
-          addDestinationPin(destination);
-          setMapReady(true);
-        });
-
-        map.on('dragstart', () => setOverview(true));
-        map.on('rotatestart', () => setOverview(true));
-        map.on('pitchstart', () => setOverview(true));
       } catch (e) {
         if (e.name === 'AbortError') return;
-        if (mountedRef.current) {
-          setErr(e.message || 'Falha ao preparar o mapa.');
-          setLoading(false);
-        }
+        if (mountedRef.current) { setErr(e.message); setLoading(false); }
+      }
+    })();
+
+    return () => { mountedRef.current = false; abort.abort(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── FASE 2: iniciar mapa (aguarda SDK + coords) ─────────────────────────
+  useEffect(() => {
+    let map = null;
+    let alive = true;
+
+    (async () => {
+      try {
+        const [tt] = await Promise.all([loadSDK(), coordsReady.current]);
+        if (!alive || !mapElRef.current) return;
+
+        const o = origRef.current || { lat: -15.7934, lon: -47.8823 };
+
+        // ✅ FIX: usa estilo night para dark mode, main para light
+        const mapStyle = getTomTomStyle(isDark);
+
+        map = tt.map({
+          key: KEY,
+          container: mapElRef.current,
+          center: [o.lon, o.lat],
+          zoom: 17.5,      // ✅ FIX: zoom navegação
+          pitch: 60,       // ✅ FIX: pitch 3D real
+          bearing: 0,
+          style: mapStyle,
+          language: 'pt-BR',
+          attributionControl: false,
+        });
+        mapRef.current = map;
+        map.addControl(new tt.NavigationControl({ showZoom: true, showCompass: true }), 'bottom-right');
+
+        map.on('load', () => {
+          if (!alive) return;
+          // 3D Buildings
+          try {
+            map.addLayer({
+              id: '3d-buildings', type: 'fill-extrusion',
+              source: 'vectorTiles', 'source-layer': 'Building',
+              paint: {
+                'fill-extrusion-color': isDark
+                  ? ['interpolate', ['linear'], ['get', 'height'],
+                    0, '#0d1117', 20, '#0f1923', 50, '#0e2040', 100, '#0a1535']
+                  : ['interpolate', ['linear'], ['get', 'height'],
+                    0, '#d4d8e0', 20, '#c8cdd8', 50, '#b0b8c8', 100, '#9aa5bb'],
+                'fill-extrusion-height': ['coalesce', ['get', 'height'], 10],
+                'fill-extrusion-base': ['coalesce', ['get', 'min_height'], 0],
+                'fill-extrusion-opacity': 0.85,
+              },
+            });
+          } catch (_) { }
+
+          if (destRef.current) addDestPin(map, destRef.current);
+          addUserPin(map, o);
+          setMapReady(true);
+        });
+      } catch (e) {
+        if (alive) { setErr(e.message || 'Falha ao carregar mapa'); setLoading(false); }
       }
     })();
 
     return () => {
-      mountedRef.current = false;
-      controller.abort();
-      if (watchRef.current != null) navigator.geolocation.clearWatch(watchRef.current);
-      clearInterval(timerRef.current);
-      if (mapRef.current) {
-        try { mapRef.current.remove(); } catch (_) { }
-      }
-      mapRef.current = null;
-      userMarkerRef.current = null;
-      destMarkerRef.current = null;
+      alive = false;
+      if (map) { try { map.remove(); } catch (_) { } }
+      mapRef.current = null; markerRef.current = null;
     };
-  }, [resolveCoords, styleUrl, addOrUpdateUserPin, addDestinationPin]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  // ── FASE 3: buscar rota (aguarda mapa pronto) ────────────────────────────
   useEffect(() => {
-    if (!mapReady) return undefined;
-    const controller = new AbortController();
+    if (!mapReady) return;
+    const abort = new AbortController();
 
     (async () => {
       try {
         setLoadMsg('Calculando rota…');
-        const origin = originRef.current;
-        const destination = destRef.current;
-        const data = await calculateRoute(origin, destination, controller.signal, navigationMode);
+        await coordsReady.current;
+        const o = origRef.current, d = destRef.current;
+        if (!o || !d) throw new Error('Coordenadas não disponíveis.');
 
+        const data = await getRoute(o, d, abort.signal, navigationMode);
         if (!mountedRef.current) return;
-
-        if (data.totalM > 180000 && isDrivingMode) {
-          throw new Error('A rota parece muito distante. Verifique origem e destino.');
-        }
 
         rdRef.current = data;
         setRd(data);
         setRemain(data.totalM);
-        setCurI(data.instrs?.[0] || { msg: 'Siga pela rota destacada', man: 'straight' });
-        setNextI(data.instrs?.[1] || null);
-        setBrng(data.initialBearing || 0);
-        drawRoute(data);
-        setCameraNavigation(origin, data.initialBearing || 0, 900);
+        if (data.instrs.length) { setCurI(data.instrs[0]); setNextI(data.instrs[1] || null); }
         setLoading(false);
+
+        const m = mapRef.current;
+        if (m) {
+          drawRoute(m, data);
+          // ✅ FIX: ao carregar, centraliza na origem com pitch 60 e bearing da rota
+          const b = data.initialBearing || 0;
+          setBrng(b);
+          m.easeTo({
+            center: [o.lon, o.lat],
+            zoom: 17.5,
+            pitch: 60,
+            bearing: b,
+            duration: 900,
+          });
+        }
       } catch (e) {
         if (e.name === 'AbortError') return;
-        if (mountedRef.current) {
-          setErr(e.message || 'Falha ao calcular rota.');
-          setLoading(false);
-        }
+        if (mountedRef.current) { setErr(e.message); setLoading(false); }
       }
     })();
 
-    return () => controller.abort();
-  }, [mapReady, navigationMode, isDrivingMode, drawRoute, setCameraNavigation]);
+    return () => abort.abort();
+  }, [mapReady]); // eslint-disable-line
 
+  // Rota neon synthwave ───────────────────────────────────────────────────────
+  const drawRoute = useCallback((m, data) => {
+    if (!m || !data) return;
+    const safe = fn => { try { fn(); } catch (_) { } };
+    safe(() => {
+      if (m.getSource('wr')) { m.getSource('wr').setData(data.geo); return; }
+      m.addSource('wr', { type: 'geojson', data: data.geo });
+      m.addLayer({
+        id: 'wr-shadow', type: 'line', source: 'wr',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#000', 'line-width': 18, 'line-opacity': 0.3, 'line-blur': 8 }
+      });
+      m.addLayer({
+        id: 'wr-border', type: 'line', source: 'wr',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': isDrivingMode ? '#6c4cff' : '#00f3ff', 'line-width': 12, 'line-opacity': 0.9 }
+      });
+      m.addLayer({
+        id: 'wr-fill', type: 'line', source: 'wr',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': isDrivingMode ? '#5b36ff' : '#0051cc', 'line-width': 8, 'line-opacity': 1 }
+      });
+      m.addLayer({
+        id: 'wr-glow', type: 'line', source: 'wr',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#fff', 'line-width': 2, 'line-opacity': 0.55 }
+      });
+    });
+  }, [isDrivingMode]);
+
+  // ✅ FIX: fitAll (visão geral) usa pitch 0 e fitBounds
+  const fitAll = useCallback((m, pts) => {
+    if (!pts?.length) return;
+    const lons = pts.map(p => p[0]), lats = pts.map(p => p[1]);
+    m.fitBounds(
+      [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+      { padding: { top: 120, bottom: 220, left: 48, right: 48 }, duration: 900, pitch: 0, bearing: 0 }
+    );
+  }, []);
+
+  // Marcadores ────────────────────────────────────────────────────────────────
+  const addDestPin = useCallback((m, d) => {
+    if (!window.tt) return;
+    const el = document.createElement('div');
+    el.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="width:44px;height:44px;border-radius:50% 50% 50% 0;
+          background:linear-gradient(135deg,#00f3ff,#0051cc);
+          border:3px solid #fff;box-shadow:0 4px 18px rgba(0,243,255,0.65);
+          transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;">
+          <span style="transform:rotate(45deg);font-size:18px;">${route.isWalk ? '🏁' : navigationMode === 'motorcycle' ? '🏍️' : '🚗'}</span>
+        </div>
+      </div>`;
+    new window.tt.Marker({ element: el, anchor: 'bottom' }).setLngLat([d.lon, d.lat]).addTo(m);
+  }, [route.isWalk, navigationMode]);
+
+  const addUserPin = useCallback((m, pos) => {
+    if (!window.tt || markerRef.current) return;
+    const el = document.createElement('div');
+    el.style.cssText = 'position:relative;width:36px;height:36px;';
+    el.innerHTML = `
+      <div style="position:absolute;inset:0;border-radius:50%;background:rgba(0,243,255,0.15);animation:wpu 2.2s ease-out infinite;"></div>
+      <div style="position:absolute;inset:0;border-radius:50%;background:rgba(0,243,255,0.08);animation:wpu 2.2s ease-out 0.7s infinite;"></div>
+      <div style="position:absolute;inset:6px;border-radius:50%;background:#00f3ff;border:3px solid #fff;
+        box-shadow:0 2px 12px rgba(0,243,255,0.9),0 0 24px rgba(0,243,255,0.4);
+        display:flex;align-items:center;justify-content:center;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="white"><path d="M12 2L7 21l5-3.5 5 3.5z"/></svg>
+      </div>
+      <style>@keyframes wpu{0%{transform:scale(1);opacity:.7}100%{transform:scale(3.5);opacity:0}}</style>`;
+    markerRef.current = new window.tt.Marker({ element: el, anchor: 'center' }).setLngLat([pos.lon, pos.lat]).addTo(m);
+  }, []);
+
+  // Instrução ─────────────────────────────────────────────────────────────────
   const updateInstr = useCallback((distM) => {
     const data = rdRef.current;
     if (!data?.instrs?.length) return;
     let idx = 0;
-    for (let i = 0; i < data.instrs.length; i += 1) {
-      if (Number(data.instrs[i].off || 0) <= distM) idx = i;
-      else break;
+    for (let i = 0; i < data.instrs.length; i++) {
+      if (data.instrs[i].off <= distM) idx = i; else break;
     }
-    setCurI(data.instrs[idx]);
-    setNextI(data.instrs[idx + 1] || null);
+    setCurI(data.instrs[idx]); setNextI(data.instrs[idx + 1] || null);
   }, []);
 
-  const onGPS = useCallback((pos) => {
-    const { latitude, longitude, accuracy, heading } = pos.coords;
-    const current = { lat: Number(latitude), lon: Number(longitude) };
-    if (!isValidCoord(current.lat, current.lon)) return;
-
-    setAcc(Math.round(Number(accuracy || 0)));
-
-    let nextBearing = Number.isFinite(heading) && heading >= 0 ? Number(heading) : brng;
-    if ((!Number.isFinite(nextBearing) || nextBearing === 0) && lastRef.current) {
-      nextBearing = bear(lastRef.current.lat, lastRef.current.lon, current.lat, current.lon);
+  // GPS ───────────────────────────────────────────────────────────────────────
+  const onGPS = useCallback(pos => {
+    const { latitude: la, longitude: lo, accuracy: ac } = pos.coords;
+    setAcc(Math.round(ac));
+    let b = brng;
+    if (lastRef.current) b = bear(lastRef.current.lat, lastRef.current.lon, la, lo);
+    lastRef.current = { lat: la, lon: lo };
+    setBrng(b);
+    const m = mapRef.current;
+    if (m) {
+      if (markerRef.current) markerRef.current.setLngLat([lo, la]);
+      else addUserPin(m, { lat: la, lon: lo });
+      // ✅ FIX: modo navegação com pitch 60, zoom 17.5, bearing do GPS
+      if (!overview) m.easeTo({ center: [lo, la], zoom: 17.5, pitch: 60, bearing: b, duration: 700, easing: t => t });
+      const rd2 = rdRef.current;
+      if (rd2 && m.getSource('wr')) drawRoute(m, rd2);
     }
-
-    lastRef.current = current;
-    setBrng(nextBearing || 0);
-    addOrUpdateUserPin(current);
-
-    if (!overview) setCameraNavigation(current, nextBearing || 0, 650);
-
-    const data = rdRef.current;
-    const origin = originRef.current;
-    const destination = destRef.current;
-
-    if (data && origin) {
-      const done = Math.min(hav(origin.lat, origin.lon, current.lat, current.lon), data.totalM || 0);
-      const remaining = Math.max(0, (data.totalM || 0) - done);
-      setCovered(done);
-      setRemain(remaining);
-      updateInstr(done);
-
-      if (destination && hav(current.lat, current.lon, destination.lat, destination.lon) < 30) {
-        setArrived(true);
-        setTracking(false);
-      }
+    const o = origRef.current, de = destRef.current, rd2 = rdRef.current;
+    if (rd2 && o) {
+      const cov = Math.min(hav(o.lat, o.lon, la, lo), rd2.totalM);
+      const rem = Math.max(0, rd2.totalM - cov);
+      setCovered(cov); setRemain(rem); updateInstr(cov);
+      if (de && hav(la, lo, de.lat, de.lon) < 25) setArrived(true);
     }
-  }, [overview, brng, addOrUpdateUserPin, setCameraNavigation, updateInstr]);
+  }, [overview, updateInstr, addUserPin, drawRoute, brng]);
 
-  const stopWatch = useCallback(() => {
-    if (watchRef.current != null) {
-      navigator.geolocation.clearWatch(watchRef.current);
-      watchRef.current = null;
-    }
-    clearInterval(timerRef.current);
-  }, []);
-
+  // Start/Stop ────────────────────────────────────────────────────────────────
   const startNav = useCallback(async () => {
-    if (!rdRef.current) return;
     if (!navigator.geolocation) {
       setErr('GPS não disponível neste navegador.');
       return;
     }
 
     setErr(null);
-    setNav(true);
-    setTracking(true);
-    setOverview(false);
-    setArrived(false);
 
     if (!document.fullscreenElement && wrapRef.current) {
       try { await wrapRef.current.requestFullscreen(); setFs(true); } catch (_) { }
     }
 
+    setNav(true);
+    setTracking(true);
+    setOverview(false);
+    setBottomOpen(false);
     t0Ref.current = Date.now() - elapsed * 1000;
     clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - t0Ref.current) / 1000));
-    }, 1000);
+    timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - t0Ref.current) / 1000)), 1000);
 
-    const handleError = (e) => {
+    const handleGpsError = (e) => {
       const message = e?.code === 1
-        ? 'Permissão de localização negada. Libere o GPS do navegador.'
+        ? 'Permissão de localização negada. Libere o GPS do navegador para iniciar a navegação.'
         : e?.code === 2
-          ? 'Não consegui obter sua localização. Ative o GPS e tente novamente.'
-          : 'Tempo esgotado ao buscar sua localização. Tente novamente.';
+          ? 'Não consegui obter sua localização agora. Ative o GPS e tente novamente.'
+          : 'Tempo esgotado ao buscar sua localização. Tente novamente em alguns segundos.';
       setErr(message);
       setTracking(false);
-      stopWatch();
+      clearInterval(timerRef.current);
+      if (watchRef.current != null) {
+        navigator.geolocation.clearWatch(watchRef.current);
+        watchRef.current = null;
+      }
     };
 
-    navigator.geolocation.getCurrentPosition(onGPS, handleError, {
+    navigator.geolocation.getCurrentPosition(onGPS, handleGpsError, {
       enableHighAccuracy: true,
       maximumAge: 0,
       timeout: 12000,
     });
 
-    watchRef.current = navigator.geolocation.watchPosition(onGPS, handleError, {
-      enableHighAccuracy: true,
-      maximumAge: 800,
-      timeout: 12000,
-    });
-
-    const origin = originRef.current;
-    setCameraNavigation(lastRef.current || origin, rdRef.current.initialBearing || brng, 650);
-  }, [elapsed, onGPS, stopWatch, setCameraNavigation, brng]);
+    watchRef.current = navigator.geolocation.watchPosition(onGPS, handleGpsError,
+      { enableHighAccuracy: true, maximumAge: 800, timeout: 12000 });
+  }, [elapsed, onGPS]);
 
   const pauseNav = useCallback(() => {
     setTracking(false);
-    stopWatch();
-  }, [stopWatch]);
+    if (watchRef.current != null) navigator.geolocation.clearWatch(watchRef.current);
+    clearInterval(timerRef.current);
+    const m = mapRef.current;
+    if (m) m.easeTo({ pitch: 45, bearing: 0, zoom: 15, duration: 700 });
+  }, []);
 
   const stopNav = useCallback(() => {
     pauseNav();
-    setNav(false);
-    setElapsed(0);
-    setCovered(0);
-    setRemain(rdRef.current?.totalM || null);
-    setArrived(false);
-    lastRef.current = null;
+    setNav(false); setElapsed(0); setCovered(0);
+    setRemain(rdRef.current?.totalM ?? null);
+    setArrived(false); setBrng(0); lastRef.current = null;
+    const m = mapRef.current, rd2 = rdRef.current;
+    if (m && rd2) {
+      // Volta para modo navegação centrado na origem com pitch 60
+      const o = origRef.current;
+      if (o) {
+        m.easeTo({ center: [o.lon, o.lat], zoom: 17.5, pitch: 60, bearing: rd2.initialBearing || 0, duration: 700 });
+      }
+    }
     if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
-    setFs(false);
-    setOverview(false);
-    setCameraNavigation(originRef.current, rdRef.current?.initialBearing || 0, 650);
-  }, [pauseNav, setCameraNavigation]);
+    setFs(false); setBottomOpen(true);
+    if (rd2?.instrs?.length) { setCurI(rd2.instrs[0]); setNextI(rd2.instrs[1] || null); }
+  }, [pauseNav]);
 
+  // ✅ FIX: visão geral usa fitBounds com pitch 0; retorno usa pitch 60
   const toggleOverview = useCallback(() => {
-    setOverview(prev => {
-      const next = !prev;
-      if (next) fitRoute(rdRef.current?.pts);
-      else setCameraNavigation(lastRef.current || originRef.current, brng || rdRef.current?.initialBearing || 0, 650);
+    setOverview(v => {
+      const next = !v;
+      const m = mapRef.current;
+      if (m) {
+        if (next) {
+          // Visão geral: fitBounds, pitch 0
+          fitAll(m, rdRef.current?.pts);
+        } else if (lastRef.current) {
+          // Retorno à navegação: pitch 60, bearing do GPS
+          m.easeTo({ center: [lastRef.current.lon, lastRef.current.lat], zoom: 17.5, pitch: 60, bearing: brng, duration: 700 });
+        } else if (origRef.current) {
+          const o = origRef.current;
+          m.easeTo({ center: [o.lon, o.lat], zoom: 17.5, pitch: 60, bearing: rdRef.current?.initialBearing || 0, duration: 700 });
+        }
+      }
       return next;
     });
-  }, [fitRoute, setCameraNavigation, brng]);
+  }, [brng, fitAll]);
 
-  const toggleFullscreen = useCallback(async () => {
-    try {
-      if (!document.fullscreenElement) {
-        await wrapRef.current?.requestFullscreen();
-        setFs(true);
-      } else {
-        await document.exitFullscreen();
-        setFs(false);
-      }
-    } catch (_) {
-      setFs(false);
-    }
-  }, []);
+  useEffect(() => () => { pauseNav(); }, []);
 
-  useEffect(() => {
-    const handle = () => setFs(!!document.fullscreenElement);
-    document.addEventListener('fullscreenchange', handle);
-    return () => document.removeEventListener('fullscreenchange', handle);
-  }, []);
-
-  const recenter = useCallback(() => {
-    setOverview(false);
-    setCameraNavigation(lastRef.current || originRef.current, brng || rdRef.current?.initialBearing || 0, 650);
-  }, [setCameraNavigation, brng]);
-
-  const close = useCallback(() => {
-    stopWatch();
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
-    document.body.style.overflow = '';
-    onClose?.();
-  }, [onClose, stopWatch]);
-
-  const progress = rd?.totalM ? Math.min(100, Math.max(0, (covered / rd.totalM) * 100)) : 0;
-  const eta = remain != null && rd?.totalM ? Math.max(0, (rd.totalS || 0) * (remain / rd.totalM)) : rd?.totalS;
-  const destName = destRef.current?.name || route?.toStop || route?.destination || 'Destino';
+  // Cálculos ──────────────────────────────────────────────────────────────────
+  const pct = rd ? Math.min(100, (covered / rd.totalM) * 100) : 0;
+  const averageKmh = navigationMode === 'motorcycle' ? 38 : navigationMode === 'car' ? 32 : 4.8;
+  const eta = remain != null ? Math.round((remain / 1000) / averageKmh * 3600) : rd?.totalS ?? null;
+  const destName = destRef.current?.name || route.fromStop || route.destination || 'Destino';
   const destCoords = destRef.current;
-  const topInstruction = stripHtmlTags(curI?.msg) || 'Siga pela rota destacada';
-  const nextInstruction = stripHtmlTags(nextI?.msg);
+
+  // ─── Design tokens: adapta dark/light ────────────────────────────────────
+  const C = isDrivingMode ? '#5b36ff' : '#00f3ff';
+
+  // ✅ FIX: cores do painel inferior com contraste correto dark vs light
+  const panelBg = isDark ? '#0a0d16' : '#ffffff';
+  const panelBorder = isDark ? '1px solid rgba(0,243,255,0.1)' : '1px solid rgba(0,0,0,0.08)';
+  const panelText = isDark ? '#ffffff' : '#111827';
+  const panelSubText = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(17,24,39,0.55)';
+  const panelAccent = isDark ? 'rgba(0,243,255,0.04)' : 'rgba(0,0,0,0.04)';
+  const panelAccentBorder = isDark ? '1px solid rgba(0,243,255,0.09)' : '1px solid rgba(0,0,0,0.08)';
+  const panelLabelColor = isDark ? 'rgba(0,243,255,0.4)' : 'rgba(0,60,160,0.55)';
+
+  const neon = {
+    border: `1.5px solid rgba(0,243,255,0.5)`,
+    background: 'linear-gradient(135deg,rgba(0,243,255,0.12),rgba(0,60,160,0.4))',
+    boxShadow: `0 0 20px rgba(0,243,255,0.22),0 6px 20px rgba(0,0,0,0.3)`,
+    color: C, fontWeight: 800, borderRadius: 18,
+  };
+
+  // Fundo do wrapper: dark=escuro, light=claro neutro
+  const wrapperBg = isDark ? '#050810' : '#f1f5f9';
 
   return (
-    <div
-      ref={wrapRef}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 2147483647,
-        background: isDark ? '#050810' : '#f8fafc',
-        color: panelText,
-        display: 'flex',
-        flexDirection: 'column',
-        fontFamily: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-      }}
-    >
-      <div ref={mapElRef} style={{ flex: 1, width: '100%', minHeight: 0, position: 'relative' }} />
+    <div ref={wrapRef} style={{ position: 'fixed', inset: 0, zIndex: 2147483647, background: wrapperBg, display: 'flex', flexDirection: 'column' }}>
 
-      {loading && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 20, display: 'grid', placeItems: 'center', background: isDark ? '#050810' : '#f8fafc' }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ width: 64, height: 64, borderRadius: 999, border: `3px solid ${isDark ? 'rgba(0,243,255,.18)' : 'rgba(91,54,255,.18)'}`, borderTopColor: accent, margin: '0 auto 16px', animation: 'lbSpin 1s linear infinite' }} />
-            <p style={{ margin: 0, color: accent, fontWeight: 900, letterSpacing: .4 }}>{loadMsg}</p>
-            <p style={{ margin: '6px 0 0', fontSize: 12, color: panelSub }}>MapLibre + OpenFreeMap · {modeLabel}</p>
-            <style>{'@keyframes lbSpin{to{transform:rotate(360deg)}}'}</style>
-          </div>
-        </div>
-      )}
+      {/* ─── MAPA ─────────────────────────────────────────────────────── */}
+      <div ref={mapElRef} style={{ flex: 1, width: '100%', position: 'relative', minHeight: 0 }}>
 
-      {err && !loading && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 25, display: 'grid', placeItems: 'center', background: isDark ? 'rgba(5,8,16,.94)' : 'rgba(248,250,252,.94)', padding: 24 }}>
-          <div style={{ width: 'min(92vw, 380px)', background: panelBg, border, borderRadius: 24, padding: 24, textAlign: 'center', boxShadow: '0 20px 70px rgba(0,0,0,.35)' }}>
-            <MapPin style={{ color: '#ef4444', width: 38, height: 38, margin: '0 auto 12px' }} />
-            <p style={{ color: panelText, fontWeight: 800, margin: 0 }}>Não consegui abrir a navegação</p>
-            <p style={{ color: panelSub, fontSize: 13, lineHeight: 1.45 }}>{err}</p>
-            <button onClick={close} type="button" style={{ marginTop: 12, padding: '12px 22px', borderRadius: 999, border: 'none', background: accent, color: '#fff', fontWeight: 900, cursor: 'pointer' }}>Fechar</button>
-          </div>
-        </div>
-      )}
-
-      <button onClick={nav ? stopNav : close} type="button" aria-label="Fechar navegação" style={{ position: 'absolute', top: 'max(env(safe-area-inset-top,0px),14px)', left: 14, zIndex: 30, width: 44, height: 44, borderRadius: 999, border, background: panelBg, color: panelText, display: 'grid', placeItems: 'center', boxShadow: '0 10px 30px rgba(0,0,0,.25)', cursor: 'pointer' }}>
-        <X width={18} height={18} />
-      </button>
-
-      <button onClick={toggleFullscreen} type="button" aria-label="Tela cheia" style={{ position: 'absolute', top: 'max(env(safe-area-inset-top,0px),14px)', right: 14, zIndex: 30, width: 44, height: 44, borderRadius: 999, border, background: panelBg, color: accent, display: 'grid', placeItems: 'center', boxShadow: '0 10px 30px rgba(0,0,0,.25)', cursor: 'pointer' }}>
-        {fs ? <Minimize2 width={17} height={17} /> : <Maximize2 width={17} height={17} />}
-      </button>
-
-      {nav && (
-        <button onClick={toggleOverview} type="button" style={{ position: 'absolute', top: 'max(env(safe-area-inset-top,0px),14px)', right: 66, zIndex: 30, height: 44, borderRadius: 999, border, background: overview ? accent : panelBg, color: overview ? '#fff' : panelText, padding: '0 14px', fontSize: 12, fontWeight: 900, boxShadow: '0 10px 30px rgba(0,0,0,.22)', cursor: 'pointer' }}>
-          {overview ? 'Voltar 3D' : 'Visão geral'}
-        </button>
-      )}
-
-      <AnimatePresence>
-        {nav && !overview && !arrived && (
-          <motion.div
-            initial={{ y: -80, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -80, opacity: 0 }}
-            style={{ position: 'absolute', top: 'max(env(safe-area-inset-top,0px),66px)', left: 12, right: 12, zIndex: 24 }}
-          >
-            <div style={{ background: 'linear-gradient(135deg,#5b36ff,#0077ff)', borderRadius: 24, color: '#fff', padding: '14px 16px', boxShadow: '0 20px 52px rgba(0,0,0,.32)' }}>
-              <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-                <div style={{ width: 56, height: 56, borderRadius: 18, background: 'rgba(255,255,255,.16)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                  <ManIcon type={curI?.man} />
-                </div>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <p style={{ margin: 0, fontSize: 19, fontWeight: 950, lineHeight: 1.18, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{topInstruction}</p>
-                  {nextInstruction && <p style={{ margin: '5px 0 0', fontSize: 12, color: 'rgba(255,255,255,.72)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Depois: {nextInstruction}</p>}
-                </div>
-              </div>
-              <div style={{ height: 4, background: 'rgba(255,255,255,.22)', borderRadius: 999, marginTop: 12, overflow: 'hidden' }}>
-                <motion.div animate={{ width: `${progress}%` }} style={{ height: '100%', background: '#fff', borderRadius: 999 }} />
+        {/* Loading spinner */}
+        {loading && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 10, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            background: isDark ? '#050810' : '#f1f5f9', gap: 16
+          }}>
+            <div style={{ position: 'relative', width: 64, height: 64 }}>
+              <div style={{
+                position: 'absolute', inset: 0, borderRadius: '50%',
+                border: '2px solid transparent', borderTopColor: C,
+                borderRightColor: isDark ? 'rgba(0,243,255,0.3)' : 'rgba(0,80,200,0.2)',
+                animation: 'spinNeon 1.2s linear infinite',
+                boxShadow: `0 0 18px rgba(0,243,255,0.4)`
+              }} />
+              <div style={{
+                position: 'absolute', inset: 8, borderRadius: '50%',
+                background: isDark ? 'rgba(0,243,255,0.06)' : 'rgba(0,80,200,0.08)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                {navigationMode === 'car' ? (
+                  <Car style={{ color: C, width: 22, height: 22 }} />
+                ) : navigationMode === 'motorcycle' ? (
+                  <Bike style={{ color: C, width: 22, height: 22 }} />
+                ) : (
+                  <Footprints style={{ color: C, width: 22, height: 22 }} />
+                )}
               </div>
             </div>
-          </motion.div>
+            <p style={{
+              color: C, fontSize: 13, fontWeight: 700, letterSpacing: 1,
+              textShadow: isDark ? `0 0 12px rgba(0,243,255,0.6)` : 'none'
+            }}>{loadMsg}</p>
+            <p style={{ color: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.4)', fontSize: 11 }}>TomTom SDK · Navegação {modeLabel} 3D</p>
+            <style>{`@keyframes spinNeon{to{transform:rotate(360deg)}}`}</style>
+          </div>
         )}
-      </AnimatePresence>
 
-      {tracking && acc != null && (
-        <div style={{ position: 'absolute', left: 14, bottom: nav ? 18 : 210, zIndex: 23, background: panelBg, border, color: acc < 35 ? accent : '#f59e0b', borderRadius: 999, padding: '6px 10px', fontSize: 11, fontWeight: 900, boxShadow: '0 8px 24px rgba(0,0,0,.2)' }}>
-          GPS ±{acc}m
-        </div>
-      )}
-
-      {nav && (
-        <div style={{ position: 'absolute', right: 14, bottom: 18, zIndex: 23, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <button onClick={recenter} type="button" aria-label="Recentralizar" style={{ width: 48, height: 48, borderRadius: 999, border, background: panelBg, color: accent, display: 'grid', placeItems: 'center', boxShadow: '0 10px 30px rgba(0,0,0,.24)', cursor: 'pointer' }}>
-            <LocateFixed width={20} height={20} />
-          </button>
-          <div style={{ background: panelBg, border, borderRadius: 18, padding: '10px 14px', textAlign: 'right', boxShadow: '0 10px 30px rgba(0,0,0,.24)' }}>
-            <p style={{ margin: 0, color: accent, fontSize: 22, fontWeight: 950, lineHeight: 1 }}>{formatDistance(remain ?? rd?.totalM ?? 0)}</p>
-            <p style={{ margin: '3px 0 0', color: panelSub, fontSize: 11, fontWeight: 800 }}>{formatDuration(eta ?? 0)}</p>
+        {/* Erro */}
+        {err && !loading && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 10, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            background: isDark ? '#050810' : '#f1f5f9', gap: 12, padding: 24
+          }}>
+            <MapPin style={{ color: '#ff453a', width: 40, height: 40 }} />
+            <p style={{ color: '#ff6b6b', fontSize: 14, textAlign: 'center', maxWidth: 300 }}>{err}</p>
+            <button onClick={onClose}
+              style={{ marginTop: 8, padding: '12px 28px', cursor: 'pointer', border: 'none', ...neon, fontSize: 14 }}>
+              Fechar
+            </button>
           </div>
-        </div>
-      )}
-
-      <AnimatePresence>
-        {arrived && (
-          <motion.div initial={{ scale: .86, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'absolute', top: '34%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 40, width: 'min(88vw, 340px)', background: panelBg, border, borderRadius: 28, padding: 26, textAlign: 'center', boxShadow: '0 24px 80px rgba(0,0,0,.38)' }}>
-            <div style={{ fontSize: 46 }}>🎉</div>
-            <p style={{ margin: '8px 0 4px', color: panelText, fontSize: 22, fontWeight: 950 }}>Destino alcançado!</p>
-            <p style={{ margin: 0, color: panelSub, fontSize: 13 }}>{formatDistance(rd?.totalM || 0)} · {formatDuration(elapsed)}</p>
-            <button onClick={stopNav} type="button" style={{ marginTop: 16, padding: '12px 22px', borderRadius: 999, border: 'none', background: accent, color: '#fff', fontWeight: 900, cursor: 'pointer' }}>Encerrar</button>
-          </motion.div>
         )}
-      </AnimatePresence>
 
-      {!nav && (
-        <div style={{ position: 'absolute', left: 12, right: 12, bottom: 'max(env(safe-area-inset-bottom,0px),12px)', zIndex: 22 }}>
-          <div style={{ background: panelBg, border, borderRadius: 26, padding: 16, boxShadow: '0 22px 70px rgba(0,0,0,.28)', backdropFilter: 'blur(18px)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, borderBottom: isDark ? '1px solid rgba(255,255,255,.08)' : '1px solid rgba(17,24,39,.08)', paddingBottom: 12, marginBottom: 12 }}>
-              <MapPin width={18} height={18} color={accent} />
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <p style={{ margin: 0, color: panelSub, fontSize: 10, fontWeight: 900, letterSpacing: 1, textTransform: 'uppercase' }}>Destino</p>
-                <p style={{ margin: 0, color: panelText, fontSize: 14, fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{destName}</p>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <p style={{ margin: 0, color: accent, fontSize: 21, fontWeight: 950, lineHeight: 1 }}>{formatDistance(remain ?? rd?.totalM ?? 0)}</p>
-                <p style={{ margin: '3px 0 0', color: panelSub, fontSize: 11, fontWeight: 800 }}>{formatDuration(eta ?? rd?.totalS ?? 0)}</p>
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 9, marginBottom: 14 }}>
-              {[{ label: 'Modo', value: modeLabel }, { label: 'Mapa', value: '3D' }, { label: 'Fonte', value: rd?.provider || '—' }].map(item => (
-                <div key={item.label} style={{ background: chipBg, border: isDark ? '1px solid rgba(255,255,255,.06)' : '1px solid rgba(17,24,39,.07)', borderRadius: 16, padding: '9px 8px', textAlign: 'center' }}>
-                  <p style={{ margin: 0, color: panelText, fontSize: 13, fontWeight: 950, textTransform: item.label === 'Modo' ? 'capitalize' : 'none' }}>{item.value}</p>
-                  <p style={{ margin: '2px 0 0', color: panelSub, fontSize: 10, fontWeight: 700 }}>{item.label}</p>
+        {/* HUD instrução */}
+        <AnimatePresence>
+          {nav && !overview && curI && !arrived && (
+            <motion.div key="instr"
+              initial={{ y: -100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -100, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 200, damping: 22 }}
+              style={{
+                position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
+                paddingTop: 'max(env(safe-area-inset-top,0px),12px)'
+              }}>
+              <div style={{
+                margin: '0 12px',
+                background: isDrivingMode ? '#5b36ff' : 'linear-gradient(135deg,rgba(0,243,255,0.15),rgba(0,60,150,0.6))',
+                borderRadius: 20, border: isDrivingMode ? '1px solid rgba(91,54,255,0.4)' : '1px solid rgba(0,243,255,0.45)',
+                backdropFilter: 'blur(20px)',
+                boxShadow: '0 8px 40px rgba(0,243,255,0.3)', padding: '14px 16px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div style={{
+                    width: 56, height: 56, borderRadius: 14,
+                    background: 'rgba(0,243,255,0.15)', border: '1px solid rgba(0,243,255,0.3)',
+                    flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}>
+                    <ManIcon type={curI.man} size={28} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* ✅ FIX: curI.msg já foi limpo de tags HTML no getRoute */}
+                    <p style={{
+                      color: '#fff', fontSize: 20, fontWeight: 800, lineHeight: 1.2, margin: 0,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                    }}>{curI.msg}</p>
+                    {nextI && <p style={{
+                      color: 'rgba(0,243,255,0.6)', fontSize: 12, margin: '4px 0 0',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                    }}>
+                      Depois: {nextI.msg}</p>}
+                  </div>
                 </div>
-              ))}
-            </div>
+                <div style={{ marginTop: 10, height: 3, borderRadius: 99, background: 'rgba(0,243,255,0.15)', overflow: 'hidden' }}>
+                  <motion.div animate={{ width: `${pct}%` }} transition={{ duration: 0.6 }}
+                    style={{ height: '100%', borderRadius: 99, background: C, boxShadow: `0 0 8px rgba(0,243,255,0.8)` }} />
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={startNav} disabled={!rd || loading} type="button" style={{ flex: 1, border: 'none', borderRadius: 20, padding: '15px 16px', background: rd && !loading ? 'linear-gradient(135deg,#00c2ff,#5b36ff)' : chipBg, color: '#fff', fontWeight: 950, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, cursor: rd && !loading ? 'pointer' : 'not-allowed', boxShadow: rd && !loading ? '0 14px 34px rgba(91,54,255,.32)' : 'none' }}>
-                {navigationMode === 'car' ? <Car width={19} height={19} /> : navigationMode === 'motorcycle' ? <Bike width={19} height={19} /> : <Footprints width={19} height={19} />}
-                Iniciar navegação 3D
+        {/* Fechar */}
+        <motion.button whileTap={{ scale: 0.88 }} onClick={nav ? stopNav : onClose}
+          style={{
+            position: 'absolute', top: 'max(env(safe-area-inset-top,0px),14px)', left: 14,
+            zIndex: 30, width: 42, height: 42, borderRadius: 21,
+            background: isDark ? 'rgba(5,8,16,0.8)' : 'rgba(255,255,255,0.85)',
+            backdropFilter: 'blur(14px)',
+            border: isDark ? '1px solid rgba(0,243,255,0.25)' : '1px solid rgba(0,0,0,0.12)',
+            color: isDark ? '#fff' : '#111827',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.3)'
+          }}>
+          <X style={{ width: 17, height: 17 }} />
+        </motion.button>
+
+        {/* Fullscreen */}
+        <motion.button whileTap={{ scale: 0.88 }} onClick={toggleFullscreen}
+          style={{
+            position: 'absolute', top: 'max(env(safe-area-inset-top,0px),14px)', right: 14,
+            zIndex: 30, width: 42, height: 42, borderRadius: 21,
+            background: isDark ? 'rgba(5,8,16,0.8)' : 'rgba(255,255,255,0.85)',
+            backdropFilter: 'blur(14px)',
+            border: isDark ? '1px solid rgba(0,243,255,0.25)' : '1px solid rgba(0,0,0,0.12)',
+            color: C,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+          }}>
+          {fs ? <Minimize2 style={{ width: 16, height: 16 }} /> : <Maximize2 style={{ width: 16, height: 16 }} />}
+        </motion.button>
+
+        {/* Overview toggle */}
+        {nav && (
+          <motion.button whileTap={{ scale: 0.9 }} onClick={toggleOverview}
+            style={{
+              position: 'absolute', top: 'max(env(safe-area-inset-top,0px),14px)', right: 66,
+              zIndex: 30, height: 42, padding: '0 14px', borderRadius: 21,
+              background: overview
+                ? 'rgba(0,243,255,0.18)'
+                : isDark ? 'rgba(5,8,16,0.8)' : 'rgba(255,255,255,0.85)',
+              backdropFilter: 'blur(14px)',
+              border: `1px solid ${overview ? 'rgba(0,243,255,0.6)' : isDark ? 'rgba(0,243,255,0.25)' : 'rgba(0,0,0,0.12)'}`,
+              color: overview ? C : isDark ? 'rgba(255,255,255,0.7)' : '#374151',
+              fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              boxShadow: overview ? `0 0 16px rgba(0,243,255,0.3)` : 'none'
+            }}>
+            {overview ? '3D ▲' : 'Visão geral'}
+          </motion.button>
+        )}
+
+        {/* Badge GPS */}
+        {tracking && acc != null && (
+          <div style={{
+            position: 'absolute', bottom: nav ? 16 : 200, left: 14, zIndex: 20,
+            background: isDark ? 'rgba(5,8,16,0.8)' : 'rgba(255,255,255,0.85)',
+            backdropFilter: 'blur(14px)',
+            border: `1px solid ${acc < 20 ? 'rgba(0,243,255,0.5)' : acc < 50 ? 'rgba(251,191,36,0.4)' : 'rgba(248,113,113,0.4)'}`,
+            borderRadius: 99, padding: '4px 10px',
+            color: acc < 20 ? C : acc < 50 ? '#fbbf24' : '#f87171',
+            fontSize: 11, fontWeight: 700
+          }}>
+            GPS ±{acc}m
+          </div>
+        )}
+
+        {/* Chegou */}
+        <AnimatePresence>
+          {arrived && (
+            <motion.div key="arrived"
+              initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ opacity: 0 }}
+              style={{
+                position: 'absolute', top: '35%', left: '50%', transform: 'translate(-50%,-50%)',
+                zIndex: 40, textAlign: 'center',
+                background: isDark ? 'rgba(5,8,16,0.95)' : 'rgba(255,255,255,0.97)',
+                backdropFilter: 'blur(24px)',
+                border: '1.5px solid rgba(0,243,255,0.45)',
+                borderRadius: 24, padding: '28px 36px',
+                boxShadow: '0 16px 60px rgba(0,0,0,0.4),0 0 40px rgba(0,243,255,0.15)'
+              }}>
+              <div style={{ fontSize: 48, marginBottom: 8 }}>🎉</div>
+              <p style={{
+                color: C, fontSize: 22, fontWeight: 900, margin: 0,
+                textShadow: isDark ? `0 0 16px rgba(0,243,255,0.7)` : 'none'
+              }}>
+                {route.isWalk ? 'Chegou!' : 'Destino alcançado!'}
+              </p>
+              <p style={{ color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.5)', fontSize: 13, marginTop: 6 }}>
+                {dist(rd?.totalM || 0)} · {mins(elapsed)}
+              </p>
+              <button onClick={stopNav}
+                style={{ marginTop: 16, padding: '12px 28px', cursor: 'pointer', border: 'none', ...neon, fontSize: 14 }}>
+                Encerrar
               </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-              {isMobile && destCoords && (
-                <button onClick={() => openNativeNavigation(destCoords.lat, destCoords.lon, destName, navigationMode)} type="button" title="Abrir no Maps" style={{ width: 54, borderRadius: 20, border, background: chipBg, color: accent, display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
-                  <ExternalLink width={18} height={18} />
-                </button>
-              )}
+        {/* ETA flutuante */}
+        {nav && !overview && remain != null && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+            style={{
+              position: 'absolute', bottom: 16, right: 14, zIndex: 20,
+              background: isDark ? 'rgba(5,8,16,0.85)' : 'rgba(255,255,255,0.9)',
+              backdropFilter: 'blur(14px)',
+              border: isDark ? '1px solid rgba(0,243,255,0.3)' : '1px solid rgba(0,0,0,0.1)',
+              borderRadius: 16, padding: '10px 16px', textAlign: 'right',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.2),0 0 16px rgba(0,243,255,0.08)'
+            }}>
+            <p style={{
+              color: C, fontSize: 22, fontWeight: 900, margin: 0, lineHeight: 1,
+              textShadow: isDark ? `0 0 12px rgba(0,243,255,0.6)` : 'none'
+            }}>{dist(remain)}</p>
+            <p style={{ color: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.45)', fontSize: 11, margin: '3px 0 0' }}>
+              {eta != null ? mins(eta) : '—'}
+            </p>
+          </motion.div>
+        )}
+      </div>
+
+      {/* ─── PAINEL INFERIOR ──────────────────────────────────────────── */}
+      {/* ✅ FIX: fundo escuro no dark, branco no light; texto com contraste */}
+      <div style={{
+        background: panelBg,
+        borderTop: panelBorder,
+        flexShrink: 0, transition: 'max-height 0.3s ease',
+        maxHeight: nav && !bottomOpen ? 0 : 999,
+        overflow: nav && !bottomOpen ? 'hidden' : 'visible'
+      }}>
+
+        {nav && (
+          <button onClick={() => setBottomOpen(v => !v)}
+            style={{
+              width: '100%', display: 'flex', justifyContent: 'center', padding: '8px 0',
+              background: 'transparent', border: 'none', cursor: 'pointer'
+            }}>
+            <div style={{ width: 36, height: 3, borderRadius: 99, background: isDark ? 'rgba(0,243,255,0.2)' : 'rgba(0,0,0,0.15)' }} />
+          </button>
+        )}
+
+        <div style={{ padding: nav ? '0 20px 20px' : '16px 20px 24px' }}>
+
+          {/* Destino + distância */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16,
+            paddingBottom: 14, borderBottom: isDark ? '1px solid rgba(0,243,255,0.07)' : '1px solid rgba(0,0,0,0.07)'
+          }}>
+            <MapPin style={{
+              color: C, width: 18, height: 18, flexShrink: 0,
+              filter: isDark ? 'drop-shadow(0 0 6px rgba(0,243,255,0.6))' : 'none'
+            }} strokeWidth={2} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{
+                color: panelLabelColor, fontSize: 10, fontWeight: 700,
+                textTransform: 'uppercase', letterSpacing: 1, margin: 0
+              }}>Destino</p>
+              <p style={{
+                color: panelText, fontSize: 14, fontWeight: 700, margin: 0,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+              }}>{destName}</p>
             </div>
+            {remain != null && (
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <p style={{
+                  color: C, fontSize: 20, fontWeight: 900, margin: 0, lineHeight: 1,
+                  textShadow: isDark ? `0 0 10px rgba(0,243,255,0.5)` : 'none'
+                }}>{dist(remain)}</p>
+                <p style={{ color: panelSubText, fontSize: 11, margin: '2px 0 0' }}>
+                  {eta != null ? mins(eta) : '—'}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Métricas */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
+            {[
+              { label: 'Percorrido', val: dist(covered) },
+              { label: 'Tempo', val: mins(elapsed) },
+              { label: 'Precisão', val: acc != null ? `±${acc}m` : '—' },
+            ].map(({ label, val }) => (
+              <div key={label} style={{
+                background: panelAccent, borderRadius: 14,
+                padding: '10px 8px', textAlign: 'center', border: panelAccentBorder
+              }}>
+                <p style={{ color: panelText, fontSize: 15, fontWeight: 800, margin: 0 }}>{val}</p>
+                <p style={{ color: panelLabelColor, fontSize: 10, margin: '2px 0 0' }}>{label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Progress bar */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ color: panelSubText, fontSize: 10, fontWeight: 600 }}>Progresso</span>
+              <span style={{
+                color: C, fontSize: 10, fontWeight: 800,
+                textShadow: isDark ? `0 0 8px rgba(0,243,255,0.5)` : 'none'
+              }}>{Math.round(pct)}%</span>
+            </div>
+            <div style={{ height: 6, borderRadius: 99, background: isDark ? 'rgba(0,243,255,0.07)' : 'rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+              <motion.div animate={{ width: `${pct}%` }} transition={{ duration: 0.7 }}
+                style={{
+                  height: '100%', borderRadius: 99,
+                  background: `linear-gradient(90deg,${C},#0051cc)`,
+                  boxShadow: isDark ? `0 0 10px rgba(0,243,255,0.6)` : 'none'
+                }} />
+            </div>
+            {rd && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                <span style={{ color: panelSubText, fontSize: 9 }}>{dist(covered)} feito</span>
+                <span style={{ color: panelSubText, fontSize: 9 }}>{dist(rd.totalM)} total</span>
+              </div>
+            )}
+          </div>
+
+          {/* Botões */}
+          <div style={{ display: 'flex', gap: 10 }}>
+            {!nav ? (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {/* Mobile: Deep Link nativo */}
+                {isMobile && destCoords && (
+                  <motion.button whileTap={{ scale: 0.96 }}
+                    onClick={() => openNativeNavigation(destCoords.lat, destCoords.lon, destName, navigationMode)}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      gap: 10, padding: '14px 20px', cursor: 'pointer', border: 'none',
+                      ...neon, fontSize: 14
+                    }}>
+                    <Smartphone style={{ width: 18, height: 18 }} />
+                    Abrir no Maps (nativo)
+                  </motion.button>
+                )}
+                {/* Desktop / Mapa 3D interno */}
+                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }}
+                  onClick={startNav} disabled={!rd}
+                  style={{
+                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    gap: 10, padding: '17px 20px', cursor: rd ? 'pointer' : 'not-allowed', border: 'none',
+                    ...neon,
+                    opacity: rd ? 1 : 0.35, fontSize: 16,
+                    boxShadow: rd ? `0 0 28px rgba(0,243,255,0.4),0 6px 20px rgba(0,0,0,0.3)` : 'none'
+                  }}>
+                  <Navigation style={{ width: 20, height: 20 }} strokeWidth={2.5} />
+                  {isMobile ? 'Navegar no mapa' : `Iniciar navegação ${isDrivingMode ? 'modo Waze' : '3D'}`}
+                </motion.button>
+              </div>
+            ) : tracking ? (
+              <motion.button whileTap={{ scale: 0.96 }} onClick={pauseNav}
+                style={{
+                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  gap: 8, padding: '15px 20px', borderRadius: 18,
+                  background: 'linear-gradient(135deg,rgba(255,59,48,0.25),rgba(200,20,10,0.45))',
+                  color: '#ff453a', fontWeight: 800, fontSize: 15,
+                  border: '1px solid rgba(255,59,48,0.4)', cursor: 'pointer',
+                  boxShadow: '0 0 16px rgba(255,59,48,0.15)'
+                }}>
+                <Square style={{ width: 17, height: 17 }} fill="currentColor" />
+                Pausar
+              </motion.button>
+            ) : (
+              <motion.button whileTap={{ scale: 0.96 }} onClick={startNav}
+                style={{
+                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  gap: 8, padding: '15px 20px', cursor: 'pointer', border: 'none',
+                  ...neon, fontSize: 15
+                }}>
+                <Play style={{ width: 17, height: 17 }} fill="currentColor" />
+                Retomar
+              </motion.button>
+            )}
+
+            {nav && (
+              <motion.button whileTap={{ scale: 0.9 }} onClick={stopNav}
+                style={{
+                  width: 52, height: 52, borderRadius: 16, flexShrink: 0,
+                  background: isDark ? 'rgba(0,243,255,0.04)' : 'rgba(0,0,0,0.05)',
+                  border: isDark ? '1px solid rgba(0,243,255,0.13)' : '1px solid rgba(0,0,0,0.1)',
+                  color: isDark ? 'rgba(0,243,255,0.5)' : '#374151',
+                  display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', cursor: 'pointer'
+                }}>
+                <RotateCcw style={{ width: 18, height: 18 }} />
+              </motion.button>
+            )}
           </div>
         </div>
-      )}
-
-      {nav && tracking && (
-        <button onClick={pauseNav} type="button" style={{ position: 'absolute', left: 14, bottom: 18, zIndex: 24, height: 48, padding: '0 16px', borderRadius: 999, border: '1px solid rgba(239,68,68,.35)', background: isDark ? 'rgba(127,29,29,.75)' : 'rgba(254,226,226,.92)', color: isDark ? '#fecaca' : '#991b1b', fontWeight: 950, display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 10px 30px rgba(0,0,0,.22)', cursor: 'pointer' }}>
-          <Square width={16} height={16} fill="currentColor" /> Pausar
-        </button>
-      )}
-
-      {nav && !tracking && !arrived && (
-        <button onClick={startNav} type="button" style={{ position: 'absolute', left: 14, bottom: 18, zIndex: 24, height: 48, padding: '0 16px', borderRadius: 999, border: 'none', background: accent, color: '#fff', fontWeight: 950, display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 10px 30px rgba(0,0,0,.22)', cursor: 'pointer' }}>
-          <Navigation width={17} height={17} /> Retomar
-        </button>
-      )}
-
-      {!nav && rd?.pts?.length > 1 && (
-        <button onClick={() => fitRoute(rd.pts)} type="button" style={{ position: 'absolute', right: 14, bottom: 188, zIndex: 23, width: 48, height: 48, borderRadius: 999, border, background: panelBg, color: accent, display: 'grid', placeItems: 'center', boxShadow: '0 10px 30px rgba(0,0,0,.22)', cursor: 'pointer' }}>
-          <Crosshair width={19} height={19} />
-        </button>
-      )}
+      </div>
     </div>
   );
 };
