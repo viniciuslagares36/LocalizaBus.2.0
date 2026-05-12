@@ -55,6 +55,18 @@ const isBusLineSearch = (text) => {
   return /^\d{1,3}(\.\d{1,2})?$/.test(value);
 };
 
+const buildBusLineSuggestion = (line) => ({
+  type: 'bus-line',
+  source: 'Linha ao vivo',
+  line: String(line || '').trim(),
+  poi: { name: `Linha ${String(line || '').trim()}` },
+  address: {
+    freeformAddress: String(line || '').trim(),
+    municipality: 'Consultar ônibus ao vivo',
+    countrySubdivision: 'Distrito Federal',
+  },
+});
+
 const getVehicleOperatorName = (vehicle) => {
   if (!vehicle?.operadora) return 'operadora';
   if (typeof vehicle.operadora === 'string') return vehicle.operadora;
@@ -1109,6 +1121,13 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
         { destinationHint: destinationAddress }
       );
 
+      if (!liveRoutes.length) {
+        setRealtimeVehicles([]);
+        setRoutes([]);
+        setError(`Nenhum ônibus ao vivo encontrado para a linha ${linha}.`);
+        return;
+      }
+
       setRealtimeVehicles(vehicles);
       setRoutes(liveRoutes);
     } catch (error) {
@@ -1364,18 +1383,15 @@ const searchRoute = async (originAddress, destinationAddress, mode) => {
     window.__lastOtpRoutes = finalCombined;
 
     if (mode === 'bus' && finalCombined.length === 0) {
-      finalCombined = buildLiveBusRoutes(
-        realtimeData,
-        originCoords,
-        destCoords,
-        originAddress,
-        destinationAddress,
-        nearbyStops,
-        allowedOriginLines
+      setRealtimeVehicles(realtimeData);
+      setRoutes([]);
+      setError(
+        `Não encontrei uma rota oficial de "${originAddress}" para "${destinationAddress}". Tente escolher uma sugestão oficial da lista ou pesquise diretamente pelo número da linha.`
       );
+      return;
     }
 
-    if (mode !== 'walk' && finalCombined.length === 0 && nearbyStops.length > 0) {
+    if (mode === 'metro' && finalCombined.length === 0 && nearbyStops.length > 0) {
       finalCombined = nearbyStops.slice(0, 5).map((stop, index) => ({
         id: `semob_stop_${stop.stopId || index}`,
         line: mode === 'metro' ? 'Estação/parada próxima' : 'Parada próxima',
@@ -1680,15 +1696,19 @@ const LocationInput = ({
     const safe = sanitizeInput(q);
 
     // Se o usuário digitou número de linha (ex: 400, 401, 411.2),
-    // não abre sugestões de endereço. Isso evita o app transformar a linha
-    // em destino/parada e quebrar a consulta por número.
+    // mostra uma sugestão própria com badge da linha e NÃO busca endereço.
     if (isBusLineSearch(safe)) {
+      setSuggestions([buildBusLineSuggestion(safe)]);
+      setShowSuggestions(true);
+      setSugLoading(false);
+      return;
+    }
+
+    if (!safe || safe.length < 3) {
       setSuggestions([]);
       setShowSuggestions(false);
       return;
     }
-
-    if (!safe || safe.length < 3) { setSuggestions([]); return; }
 
     abortRef.current?.abort();
     abortRef.current = new AbortController();
@@ -1767,7 +1787,7 @@ const LocationInput = ({
   }, []);
 
   return (
-    <div className="relative z-[1000]" ref={inputRef}>
+    <div className="relative z-[6000]" ref={inputRef}>
       <div className="absolute left-3 md:left-4 top-1/2 -translate-y-1/2 z-10">
         <div className="rounded-full bg-[var(--accent)]/10 p-1 md:p-1.5">
           <Icon className="h-3.5 w-3.5 md:h-4 md:w-4 text-[var(--accent)]" strokeWidth={1.5} />
@@ -1805,14 +1825,45 @@ const LocationInput = ({
         {showSuggestions && suggestions.length > 0 && (
           <motion.div initial={{ opacity: 0, y: -6, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.14 }}
-            className="absolute z-[3000] w-full mt-1.5 bg-[var(--dropdown-bg)] backdrop-blur-xl rounded-xl shadow-2xl border border-[var(--border)] max-h-56 overflow-y-auto">
-            {suggestions.map((s, i) => (
-              <button key={i} onClick={() => { onChange(s.address.freeformAddress); setShowSuggestions(false); setSuggestions([]); }}
-                className="w-full text-left px-4 py-2.5 hover:bg-[var(--accent)]/8 transition-colors border-b border-[var(--border)] last:border-0">
-                <p className="text-sm font-medium text-[var(--text-primary)] truncate">{s.address.freeformAddress}</p>
-                <p className="text-xs text-[var(--text-tertiary)] truncate">{s.source ? `${s.source} • ` : ''}{s.address.municipality || s.address.countrySubdivision}</p>
-              </button>
-            ))}
+            className="absolute z-[9999] w-full mt-1.5 bg-[var(--dropdown-bg)] backdrop-blur-xl rounded-xl shadow-2xl border border-[var(--border)] max-h-72 overflow-y-auto"
+            >
+            {suggestions.map((s, i) => {
+              const isLineSuggestion = s.type === 'bus-line';
+              const label = isLineSuggestion ? s.line : s.address?.freeformAddress;
+
+              return (
+                <button
+                  key={i}
+                  onClick={() => {
+                    onChange(label || '');
+                    setShowSuggestions(false);
+                    setSuggestions([]);
+                  }}
+                  className="w-full text-left px-4 py-2.5 hover:bg-[var(--accent)]/8 transition-colors border-b border-[var(--border)] last:border-0"
+                >
+                  {isLineSuggestion ? (
+                    <div className="flex items-center gap-3">
+                      <span className="inline-flex min-w-[3.3rem] items-center justify-center rounded-md border border-lime-300 bg-lime-400 px-2.5 py-1 text-xs font-black tracking-tight text-black shadow-sm">
+                        {s.line}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-[var(--text-primary)] truncate">
+                          Consultar linha {s.line}
+                        </p>
+                        <p className="text-xs text-[var(--text-tertiary)] truncate">
+                          Ver ônibus ao vivo dessa linha • Ida e volta
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-[var(--text-primary)] truncate">{s.address.freeformAddress}</p>
+                      <p className="text-xs text-[var(--text-tertiary)] truncate">{s.source ? `${s.source} • ` : ''}{s.address.municipality || s.address.countrySubdivision}</p>
+                    </>
+                  )}
+                </button>
+              );
+            })}
           </motion.div>
         )}
       </AnimatePresence>
@@ -2276,15 +2327,19 @@ const canSearch = selectedMode === 'bus'
 
       {/* SEARCH */}
       <div ref={searchRef} className="max-w-2xl mx-auto px-4 -mt-14 md:-mt-20 pb-24 relative z-10">
-        <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, ...spring }}
-          className="bg-[var(--card-bg)] backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-2xl border border-[var(--border)] overflow-hidden">
-          <div className="px-6 md:px-8 py-4 md:py-5 border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent)]/5 to-transparent">
+<motion.div
+  initial={{ opacity: 0, y: 24 }}
+  animate={{ opacity: 1, y: 0 }}
+  transition={{ delay: 0.1, ...spring }}
+  className="bg-[var(--card-bg)] backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-2xl border border-[var(--border)] overflow-visible"
+>
+  <div className="px-6 md:px-8 py-4 md:py-5 border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent)]/5 to-transparent">
             <h2 className="text-base md:text-lg font-semibold text-[var(--text-primary)] tracking-tight">Planeje sua rota</h2>
             <p className="text-xs md:text-sm text-[var(--text-secondary)] mt-0.5">Busque por ônibus, metrô e caminhada</p>
           </div>
 
           <div className="p-6 md:p-8">
-            <div className="space-y-3">
+            <div className="relative z-[5000] space-y-3">
               <LocationInput
   value={origin}
   onChange={setOrigin}
