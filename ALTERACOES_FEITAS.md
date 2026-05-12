@@ -12,3 +12,11 @@
 ## Observação
 
 Carro e Moto usam a API TomTom. A variável `VITE_TOMTOM_API_KEY` precisa estar configurada na Vercel.
+
+
+## Correção do botão Navegar
+- Ajustado clique do botão Navegar para abrir o modal com segurança usando preventDefault/stopPropagation.
+- Modal agora usa chave única por abertura para forçar renderização limpa.
+- Overlay aumentado para z-index máximo para não ficar escondido atrás do app.
+- Navegação interna agora mostra erro claro quando GPS/permissão de localização falha.
+- Adicionada validação de chave TomTom ausente.

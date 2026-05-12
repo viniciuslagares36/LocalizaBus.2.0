@@ -3,7 +3,7 @@
 // Deep Link: geo: / maps:// para app nativo de GPS
 // Botões: estética neon cyan #00f3ff mantida
 // Ajuste: badge ao vivo agora mostra minutos desde a última atualização do GPS
-import React, { useMemo, useCallback, useState, memo } from 'react';
+import React, { useMemo, useCallback, useState, useEffect, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bus, Train, Clock, MapPin, Footprints, ArrowRight, ExternalLink, Car, Bike } from 'lucide-react';
@@ -258,7 +258,17 @@ const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCou
     );
   }, [route.toStop, route.destination, route.toLat, route.toLon, route.navigationMode]);
 
-  const handleWalkOpen = useCallback(() => onWalkOpen(route), [route, onWalkOpen]);
+  const handleWalkOpen = useCallback((event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+
+    if (typeof onWalkOpen === 'function') {
+      onWalkOpen({
+        ...route,
+        _modalOpenId: `${route.id || 'rota'}-${Date.now()}`,
+      });
+    }
+  }, [route, onWalkOpen]);
 
   return (
     <motion.div
@@ -389,6 +399,7 @@ const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCou
               <motion.button
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.95 }}
+                type="button"
                 onClick={handleWalkOpen}
                 className="rounded-full px-3 py-1.5 text-xs font-semibold flex items-center gap-1"
                 style={{
@@ -409,6 +420,7 @@ const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCou
               </motion.button>
 
               <motion.button
+                type="button"
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={handleDeepLink}
@@ -450,6 +462,7 @@ const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCou
                 <motion.button
                   whileHover={{ scale: 1.04 }}
                   whileTap={{ scale: 0.95 }}
+                  type="button"
                   onClick={() => onFocusMap?.(route.id)}
                   className="rounded-full px-4 py-1.5 text-xs font-semibold text-white bg-green-600"
                 >
@@ -459,6 +472,7 @@ const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCou
                 <motion.button
                   whileHover={{ scale: 1.04 }}
                   whileTap={{ scale: 0.95 }}
+                  type="button"
                   onClick={() => onFocusMap?.(route.id)}
                   className="rounded-full px-4 py-1.5 text-xs font-semibold text-white bg-blue-500"
                 >
@@ -488,7 +502,8 @@ const RouteResultRefatorado = ({
   onTogglePickingLocation,
 }) => {
   const [walkRoute, setWalkRoute] = useState(null);
-    const [selectedRouteId, setSelectedRouteId] = useState(null);
+  const [walkModalKey, setWalkModalKey] = useState(null);
+  const [selectedRouteId, setSelectedRouteId] = useState(null);
 
 const processedRoutes = useMemo(() => {
   if (!routes?.length) return [];
@@ -696,8 +711,22 @@ const liveMarkers = useMemo(
     const firstBus = liveMarkers[0];
     return firstBus ? [firstBus.lon, firstBus.lat] : null;
   }, [processedRoutes, liveMarkers]);
-  const handleWalkOpen = useCallback(route => setWalkRoute(route), []);
-  const handleClose = useCallback(() => setWalkRoute(null), []);
+  const handleWalkOpen = useCallback((route) => {
+    const modalId = route?._modalOpenId || `${route?.id || 'rota'}-${Date.now()}`;
+    setWalkModalKey(modalId);
+    setWalkRoute({ ...route, _modalOpenId: modalId });
+    document.body.style.overflow = 'hidden';
+  }, []);
+
+  const handleClose = useCallback(() => {
+    setWalkRoute(null);
+    setWalkModalKey(null);
+    document.body.style.overflow = '';
+  }, []);
+
+  useEffect(() => () => {
+    document.body.style.overflow = '';
+  }, []);
 
   if (loading) {
     return (
@@ -716,6 +745,7 @@ const liveMarkers = useMemo(
       <AnimatePresence>
         {walkRoute && createPortal(
           <WalkingMapModal
+            key={walkModalKey || walkRoute?._modalOpenId || walkRoute?.id || 'walking-modal'}
             route={walkRoute}
             userLocation={userLocation}
             onClose={handleClose}

@@ -214,6 +214,9 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
 
     (async () => {
       try {
+        if (!KEY) {
+          throw new Error('Chave TomTom ausente. Configure VITE_TOMTOM_API_KEY na Vercel e faça redeploy.');
+        }
         setLoadMsg('Localizando pontos…');
 
         // Origem
@@ -472,14 +475,47 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
 
   // Start/Stop ────────────────────────────────────────────────────────────────
   const startNav = useCallback(async () => {
-    if (!navigator.geolocation) { setErr('GPS não disponível'); return; }
+    if (!navigator.geolocation) {
+      setErr('GPS não disponível neste navegador.');
+      return;
+    }
+
+    setErr(null);
+
     if (!document.fullscreenElement && wrapRef.current) {
       try { await wrapRef.current.requestFullscreen(); setFs(true); } catch (_) { }
     }
-    setNav(true); setTracking(true); setOverview(false); setBottomOpen(false);
+
+    setNav(true);
+    setTracking(true);
+    setOverview(false);
+    setBottomOpen(false);
     t0Ref.current = Date.now() - elapsed * 1000;
+    clearInterval(timerRef.current);
     timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - t0Ref.current) / 1000)), 1000);
-    watchRef.current = navigator.geolocation.watchPosition(onGPS, e => console.warn(e),
+
+    const handleGpsError = (e) => {
+      const message = e?.code === 1
+        ? 'Permissão de localização negada. Libere o GPS do navegador para iniciar a navegação.'
+        : e?.code === 2
+          ? 'Não consegui obter sua localização agora. Ative o GPS e tente novamente.'
+          : 'Tempo esgotado ao buscar sua localização. Tente novamente em alguns segundos.';
+      setErr(message);
+      setTracking(false);
+      clearInterval(timerRef.current);
+      if (watchRef.current != null) {
+        navigator.geolocation.clearWatch(watchRef.current);
+        watchRef.current = null;
+      }
+    };
+
+    navigator.geolocation.getCurrentPosition(onGPS, handleGpsError, {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 12000,
+    });
+
+    watchRef.current = navigator.geolocation.watchPosition(onGPS, handleGpsError,
       { enableHighAccuracy: true, maximumAge: 800, timeout: 12000 });
   }, [elapsed, onGPS]);
 
@@ -534,7 +570,7 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
   };
 
   return (
-    <div ref={wrapRef} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: isDrivingMode ? '#f6f7fb' : '#050810', display: 'flex', flexDirection: 'column' }}>
+    <div ref={wrapRef} style={{ position: 'fixed', inset: 0, zIndex: 2147483647, background: isDrivingMode ? '#f6f7fb' : '#050810', display: 'flex', flexDirection: 'column' }}>
 
       {/* ─── MAPA ─────────────────────────────────────────────────────── */}
       <div ref={mapElRef} style={{ flex: 1, width: '100%', position: 'relative', minHeight: 0 }}>
