@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, Component } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Bus, Footprints, MapPin, Train, Clock, ArrowRight,
@@ -1779,16 +1780,40 @@ const LocationInput = ({
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [sugLoading, setSugLoading] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState(null);
   const debRef = useRef(null);
   const abortRef = useRef(null);
   const inputRef = useRef(null);
+
+  const updateDropdownPosition = useCallback(() => {
+    if (!inputRef.current || typeof window === 'undefined') return;
+
+    const rect = inputRef.current.getBoundingClientRect();
+
+    setDropdownStyle({
+      position: 'fixed',
+      top: `${rect.bottom + 6}px`,
+      left: `${rect.left}px`,
+      width: `${rect.width}px`,
+      zIndex: 2147483647,
+    });
+  }, []);
+
+  const openSuggestions = useCallback(() => {
+    updateDropdownPosition();
+    setShowSuggestions(true);
+  }, [updateDropdownPosition]);
+
+  const closeSuggestions = useCallback(() => {
+    setShowSuggestions(false);
+  }, []);
 
   const fetchSuggestions = async (q) => {
     const safe = sanitizeInput(q);
 
     if (!safe) {
       setSuggestions([]);
-      setShowSuggestions(false);
+      closeSuggestions();
       return;
     }
 
@@ -1823,7 +1848,7 @@ const LocationInput = ({
 
         if (lineSuggestions.length > 0) {
           setSuggestions(lineSuggestions);
-          setShowSuggestions(true);
+          openSuggestions();
           return;
         }
 
@@ -1847,7 +1872,7 @@ const LocationInput = ({
             position: null,
           },
         ]);
-        setShowSuggestions(true);
+        openSuggestions();
         return;
       } catch (error) {
         console.warn('[line suggestions]', error?.message || error);
@@ -1872,7 +1897,7 @@ const LocationInput = ({
             position: null,
           },
         ]);
-        setShowSuggestions(true);
+        openSuggestions();
         return;
       } finally {
         setSugLoading(false);
@@ -1881,7 +1906,7 @@ const LocationInput = ({
 
     if (safe.length < 3) {
       setSuggestions([]);
-      setShowSuggestions(false);
+      closeSuggestions();
       return;
     }
 
@@ -1942,7 +1967,12 @@ const LocationInput = ({
         .slice(0, 10);
 
       setSuggestions(merged);
-      setShowSuggestions(merged.length > 0);
+
+      if (merged.length > 0) {
+        openSuggestions();
+      } else {
+        closeSuggestions();
+      }
     } catch (e) {
       if (!axios.isCancel(e)) {
         console.error('Erro na busca TomTom:', e);
@@ -1957,13 +1987,32 @@ const LocationInput = ({
     onChange(safe);
 
     clearTimeout(debRef.current);
-    debRef.current = setTimeout(() => fetchSuggestions(safe), 350);
+    debRef.current = setTimeout(() => fetchSuggestions(safe), 300);
   };
 
   useEffect(() => {
+    if (!showSuggestions) return undefined;
+
+    updateDropdownPosition();
+
+    const handleReposition = () => updateDropdownPosition();
+
+    window.addEventListener('resize', handleReposition);
+    window.addEventListener('scroll', handleReposition, true);
+
+    return () => {
+      window.removeEventListener('resize', handleReposition);
+      window.removeEventListener('scroll', handleReposition, true);
+    };
+  }, [showSuggestions, updateDropdownPosition]);
+
+  useEffect(() => {
     const h = (e) => {
-      if (inputRef.current && !inputRef.current.contains(e.target)) {
-        setShowSuggestions(false);
+      const clickedInsideInput = inputRef.current && inputRef.current.contains(e.target);
+      const clickedInsideDropdown = e.target?.closest?.('[data-location-dropdown="true"]');
+
+      if (!clickedInsideInput && !clickedInsideDropdown) {
+        closeSuggestions();
       }
     };
 
@@ -1974,7 +2023,77 @@ const LocationInput = ({
       clearTimeout(debRef.current);
       abortRef.current?.abort();
     };
-  }, []);
+  }, [closeSuggestions]);
+
+  const suggestionsDropdown =
+    showSuggestions &&
+    suggestions.length > 0 &&
+    dropdownStyle &&
+    typeof document !== 'undefined'
+      ? createPortal(
+          <AnimatePresence>
+            <motion.div
+              data-location-dropdown="true"
+              initial={{ opacity: 0, y: -6, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.14 }}
+              style={dropdownStyle}
+              className="bg-[var(--dropdown-bg)] backdrop-blur-xl rounded-xl shadow-2xl border border-[var(--border)] max-h-72 overflow-y-auto"
+            >
+              {suggestions.map((s, i) => {
+                const isLineSuggestion = s.isBusLine || s.type === 'bus-line';
+                const label = isLineSuggestion ? s.line : s.address?.freeformAddress;
+
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => {
+                      onChange(label || '');
+                      closeSuggestions();
+                      setSuggestions([]);
+                    }}
+                    className="w-full text-left px-4 py-2.5 hover:bg-[var(--accent)]/8 transition-colors border-b border-[var(--border)] last:border-0"
+                  >
+                    {isLineSuggestion ? (
+                      <div className="flex items-center gap-3">
+                        <span
+                          className="inline-flex min-w-[58px] items-center justify-center rounded-md border px-2.5 py-1 text-xs font-black tracking-tight shadow-sm"
+                          style={getLineBadgeStyle(s.line, s.color, s.textColor)}
+                        >
+                          {getLineBadgeLabel(s.line)}
+                        </span>
+
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                            {s.lineName || `Consultar linha ${s.line}`}
+                          </p>
+                          <p className="text-xs text-[var(--text-tertiary)] truncate">
+                            {s.source ? `${s.source} • ` : ''}
+                            Ver ônibus ao vivo, ida e volta
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm font-medium text-[var(--text-primary)] truncate">
+                          {s.address?.freeformAddress}
+                        </p>
+                        <p className="text-xs text-[var(--text-tertiary)] truncate">
+                          {s.source ? `${s.source} • ` : ''}
+                          {s.address?.municipality || s.address?.countrySubdivision}
+                        </p>
+                      </>
+                    )}
+                  </button>
+                );
+              })}
+            </motion.div>
+          </AnimatePresence>,
+          document.body
+        )
+      : null;
 
   return (
     <div className="relative z-[9000] overflow-visible" ref={inputRef}>
@@ -1995,7 +2114,11 @@ const LocationInput = ({
         autoComplete="off"
         spellCheck={false}
         maxLength={300}
-        onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+        onFocus={() => {
+          if (suggestions.length > 0) {
+            openSuggestions();
+          }
+        }}
         className="w-full rounded-xl md:rounded-2xl border border-[var(--border)] bg-[var(--input-bg)] pl-10 md:pl-12 pr-20 md:pr-28 py-3 md:py-3.5 text-sm md:text-base text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20 transition-all duration-200"
       />
 
@@ -2034,65 +2157,7 @@ const LocationInput = ({
         )}
       </div>
 
-      <AnimatePresence>
-        {showSuggestions && suggestions.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: -6, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.14 }}
-            className="absolute left-0 top-full z-[99999] w-full mt-1.5 bg-[var(--dropdown-bg)] backdrop-blur-xl rounded-xl shadow-2xl border border-[var(--border)] max-h-72 overflow-y-auto"
-          >
-            {suggestions.map((s, i) => {
-              const isLineSuggestion = s.isBusLine || s.type === 'bus-line';
-              const label = isLineSuggestion ? s.line : s.address?.freeformAddress;
-
-              return (
-                <button
-                  key={i}
-                  onClick={() => {
-                    onChange(label || '');
-                    setShowSuggestions(false);
-                    setSuggestions([]);
-                  }}
-                  className="w-full text-left px-4 py-2.5 hover:bg-[var(--accent)]/8 transition-colors border-b border-[var(--border)] last:border-0"
-                >
-                  {isLineSuggestion ? (
-                    <div className="flex items-center gap-3">
-                      <span
-                        className="inline-flex min-w-[58px] items-center justify-center rounded-md border px-2.5 py-1 text-xs font-black tracking-tight shadow-sm"
-                        style={getLineBadgeStyle(s.line, s.color, s.textColor)}
-                      >
-                        {getLineBadgeLabel(s.line)}
-                      </span>
-
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-[var(--text-primary)] truncate">
-                          {s.lineName || `Consultar linha ${s.line}`}
-                        </p>
-                        <p className="text-xs text-[var(--text-tertiary)] truncate">
-                          {s.source ? `${s.source} • ` : ''}
-                          Ver ônibus ao vivo, ida e volta
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <p className="text-sm font-medium text-[var(--text-primary)] truncate">
-                        {s.address?.freeformAddress}
-                      </p>
-                      <p className="text-xs text-[var(--text-tertiary)] truncate">
-                        {s.source ? `${s.source} • ` : ''}
-                        {s.address?.municipality || s.address?.countrySubdivision}
-                      </p>
-                    </>
-                  )}
-                </button>
-              );
-            })}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {suggestionsDropdown}
     </div>
   );
 };
@@ -2501,7 +2566,7 @@ const canSearch = selectedMode === 'bus'
       <ThemeToggle dark={dark} onToggle={() => setDark(d => !d)} />
 
       {/* HERO */}
-      <div className="relative h-screen flex items-center justify-center overflow-visible">
+      <div className="relative h-screen flex items-center justify-center overflow-hidden">
         <AnimatePresence mode="wait">
           <motion.div key={activeSlide}
             initial={{ opacity: 0 }}
@@ -2611,7 +2676,7 @@ const canSearch = selectedMode === 'bus'
         duration: 0.35,
         ease: [0.22, 1, 0.36, 1],
       }}
-      className="relative z-0 mt-4 overflow-visible rounded-2xl border border-[var(--border)]"
+      className="relative z-0 mt-4 overflow-hidden rounded-2xl border border-[var(--border)]"
     >
       <LeafletMap
         center={
