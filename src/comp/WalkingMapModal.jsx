@@ -21,6 +21,8 @@ const MAPBOX_KEY = MAPBOX_TOKEN;
 const TOMTOM_KEY = TOMTOM_API_KEY;
 const ORS_KEY = ORS_API_KEY;
 
+const KEY = TOMTOM_KEY;
+
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 const hav = (a, b, c, d) => {
