@@ -12,8 +12,9 @@ import {
   ArrowUp, RotateCcw, Play, Square, MapPin, Maximize2, Minimize2,
   Smartphone
 } from 'lucide-react';
+import { TOMTOM_API_KEY } from '../config/apiKeys';
 
-const KEY = 'kVt12B5jgJTHfcvXLLDSPgcX6bz4f7R1';
+const KEY = TOMTOM_API_KEY;
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 const hav = (a, b, c, d) => {

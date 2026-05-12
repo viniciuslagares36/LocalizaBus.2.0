@@ -1,10 +1,11 @@
 // src/config/busConfig.js
+import { TOMTOM_API_KEY } from './apiKeys';
 
 // ─── TOMTOM CONFIG ────────────────────────────────────────────────────────────
 // [TASK 4] categorySet removido para permitir buscas gerais de endereços,
 // não apenas pontos de interesse de transporte público.
 export const TOMTOM_CONFIG = {
-  API_KEY: 'kVt12B5jgJTHfcvXLLDSPgcX6bz4f7R1',
+  API_KEY: TOMTOM_API_KEY,
   BASE_URL: 'https://api.tomtom.com/search/2',
   SEARCH_PARAMS: {
     idxSet: 'POI,PAD,STR',

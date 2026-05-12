@@ -14,7 +14,7 @@ function requestJson(url) {
     const req = https.get(
       url,
       {
-        timeout: 25000,
+        timeout: 15000,
         headers: {
           Accept: 'application/json,text/plain,*/*',
           'User-Agent':
@@ -24,10 +24,6 @@ function requestJson(url) {
           Referer: 'https://www.sistemas.dftrans.df.gov.br/',
           Origin: 'https://www.sistemas.dftrans.df.gov.br',
         },
-
-        // Ajuda caso o Node/Vercel enrosque em certificado/cadeia TLS.
-        // Se o endpoint tiver SSL estranho, isso evita "fetch failed".
-        rejectUnauthorized: false,
       },
       (response) => {
         let raw = '';

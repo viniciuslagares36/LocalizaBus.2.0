@@ -2,8 +2,7 @@
 // Integração Transitland v2 para MVP do LocalizaBus.
 // TomTom continua sendo usado no projeto para mapa e busca/geocoding.
 
-const TRANSITLAND_API_KEY =
-  import.meta.env?.VITE_TRANSITLAND_API_KEY || 'MIIeRroLCyLU1gRrbfAUY7beM3HA0WoS';
+import { TRANSITLAND_API_KEY } from '../config/apiKeys';
 
 const REST_BASE = 'https://transit.land/api/v2/rest';
 const OTP_BASE = 'https://transit.land/api/v2/routing/otp/plan';

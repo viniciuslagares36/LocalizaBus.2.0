@@ -23,9 +23,9 @@ import {
   fetchDftransVehicles,
   getLiveVehiclesByLine,
 } from './services/dftransGps';
+import { TOMTOM_API_KEY } from './config/apiKeys';
 
 // ─── API CONFIG ────────────────────────────────
-const TOMTOM_API_KEY = 'kVt12B5jgJTHfcvXLLDSPgcX6bz4f7R1';
 // TomTom permanece para mapa, busca, geocoding e caminhada.
 // DFTrans/DF no Ponto agora é a fonte principal de ônibus ao vivo.
 

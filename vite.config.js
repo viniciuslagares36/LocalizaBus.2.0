@@ -6,5 +6,19 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true
+  },
+  build: {
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          maps: ['leaflet', 'react-leaflet'],
+          motion: ['framer-motion'],
+          icons: ['lucide-react'],
+          http: ['axios']
+        }
+      }
+    }
   }
 })
