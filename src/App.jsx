@@ -1672,7 +1672,99 @@ if (rv) {
     realtimeVehicles,
   };
 };
+const getLineBadgeLabel = (line) => {
+  const value = String(line || '').trim();
 
+  if (!value) return 'BUS';
+
+  return value;
+};
+
+const getReadableTextColor = (backgroundColor, fallback = '#111827') => {
+  if (!backgroundColor || !backgroundColor.startsWith('#')) return fallback;
+
+  const hex = backgroundColor.replace('#', '');
+
+  if (hex.length !== 6) return fallback;
+
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+
+  return brightness > 150 ? '#111827' : '#ffffff';
+};
+
+const getFallbackLineBadgeColors = (line) => {
+  const value = String(line || '').trim();
+
+  if (value.startsWith('0.') || value.startsWith('4')) {
+    return {
+      background: '#a3e635',
+      color: '#111827',
+      border: '#bef264',
+    };
+  }
+
+  if (value.startsWith('9')) {
+    return {
+      background: '#22d3ee',
+      color: '#111827',
+      border: '#67e8f9',
+    };
+  }
+
+  if (value.startsWith('5')) {
+    return {
+      background: '#facc15',
+      color: '#111827',
+      border: '#fde047',
+    };
+  }
+
+  if (value.startsWith('1')) {
+    return {
+      background: '#22c55e',
+      color: '#ffffff',
+      border: '#86efac',
+    };
+  }
+
+  if (value.startsWith('2')) {
+    return {
+      background: '#3b82f6',
+      color: '#ffffff',
+      border: '#93c5fd',
+    };
+  }
+
+  return {
+    background: '#334155',
+    color: '#ffffff',
+    border: '#64748b',
+  };
+};
+
+const getLineBadgeStyle = (line, routeColor, routeTextColor) => {
+  if (routeColor) {
+    return {
+      backgroundColor: routeColor,
+      color: routeTextColor || getReadableTextColor(routeColor),
+      borderColor: routeColor,
+      boxShadow: '0 8px 20px rgba(0,0,0,.20)',
+    };
+  }
+
+  const fallback = getFallbackLineBadgeColors(line);
+
+  return {
+    backgroundColor: fallback.background,
+    color: fallback.color,
+    borderColor: fallback.border,
+    boxShadow: '0 8px 20px rgba(0,0,0,.20)',
+  };
+};
 // ─── LOCATION INPUT ──────────────────────────────
 // ─── LOCATION INPUT ──────────────────────────────
 const LocationInput = ({
