@@ -218,7 +218,9 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
 
         // Origem
         let o = null;
-        if (userLocation && isValidCoord(userLocation.lat, userLocation.lon)) {
+        if (route.fromLat && route.fromLon && isValidCoord(Number(route.fromLat), Number(route.fromLon))) {
+          o = { lat: Number(route.fromLat), lon: Number(route.fromLon) };
+        } else if (userLocation && isValidCoord(userLocation.lat, userLocation.lon)) {
           o = { lat: userLocation.lat, lon: userLocation.lon };
         } else if (route.origin) {
           o = await geocode(route.origin, signal);
@@ -227,17 +229,26 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
         }
 
         // Destino
+        // Para Carro/Moto/Caminhada direta, SEMPRE usa o destino pesquisado.
+        // O bug anterior geocodava `fromStop` como destino e podia jogar a rota para outro estado.
         let d = null;
-        if (route.isWalk && route.destination) {
+        if (route.toLat && route.toLon && isValidCoord(Number(route.toLat), Number(route.toLon))) {
+          d = { lat: Number(route.toLat), lon: Number(route.toLon), name: route.destination || route.toStop || 'Destino' };
+        } else if (route.isNavigationRoute && route.destination) {
           d = { ...(await geocode(route.destination, signal)), name: route.destination };
-        } else if (route.lat && route.lon && isValidCoord(route.lat, route.lon)) {
-          d = { lat: route.lat, lon: route.lon, name: route.fromStop || 'Ponto de embarque' };
-        } else if (route.fromStop && route.fromStop !== 'Ponto de embarque') {
-          d = { ...(await geocode(route.fromStop, signal)), name: route.fromStop };
+        } else if (route.lat && route.lon && isValidCoord(Number(route.lat), Number(route.lon))) {
+          d = { lat: Number(route.lat), lon: Number(route.lon), name: route.fromStop || 'Ponto de embarque' };
+        } else if (route.isWalk && route.destination) {
+          d = { ...(await geocode(route.destination, signal)), name: route.destination };
         } else if (route.destination) {
           d = { ...(await geocode(route.destination, signal)), name: route.destination };
         } else {
           d = { lat: -15.7801, lon: -47.9292, name: 'Destino' };
+        }
+
+        const straightDistance = hav(o.lat, o.lon, d.lat, d.lon);
+        if (straightDistance > 180000 && (navigationMode === 'car' || navigationMode === 'motorcycle')) {
+          throw new Error('A rota ficou muito distante. Confira se a origem e o destino estão corretos ou escolha uma sugestão da lista.');
         }
 
         if (!mountedRef.current) return;
@@ -276,7 +287,7 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
           zoom: 15,
           pitch: 45,   // ✅ 3D perspectiva estilo Waze
           bearing: 0,
-          style: `https://api.tomtom.com/map/1/style/22.2.1-1/basic_night.json?key=${KEY}`,
+          style: `https://api.tomtom.com/map/1/style/22.2.1-1/${isDrivingMode ? 'basic_main' : 'basic_night'}.json?key=${KEY}`,
           language: 'pt-BR',
           attributionControl: false,
         });
@@ -367,12 +378,12 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
       m.addLayer({
         id: 'wr-border', type: 'line', source: 'wr',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#00f3ff', 'line-width': 12, 'line-opacity': 0.9 }
+        paint: { 'line-color': isDrivingMode ? '#6c4cff' : '#00f3ff', 'line-width': 12, 'line-opacity': 0.9 }
       });
       m.addLayer({
         id: 'wr-fill', type: 'line', source: 'wr',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#0051cc', 'line-width': 8, 'line-opacity': 1 }
+        paint: { 'line-color': isDrivingMode ? '#5b36ff' : '#0051cc', 'line-width': 8, 'line-opacity': 1 }
       });
       m.addLayer({
         id: 'wr-glow', type: 'line', source: 'wr',
@@ -380,7 +391,7 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
         paint: { 'line-color': '#fff', 'line-width': 2, 'line-opacity': 0.55 }
       });
     });
-  }, []);
+  }, [isDrivingMode]);
 
   const fitAll = useCallback((m, pts) => {
     if (!pts?.length) return;
@@ -514,7 +525,7 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
   const destCoords = destRef.current;
 
   // ─── Design tokens Synthwave ──────────────────────────────────────────────
-  const C = '#00f3ff';
+  const C = isDrivingMode ? '#5b36ff' : '#00f3ff';
   const neon = {
     border: `1.5px solid rgba(0,243,255,0.5)`,
     background: 'linear-gradient(135deg,rgba(0,243,255,0.12),rgba(0,60,160,0.4))',
@@ -523,7 +534,7 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
   };
 
   return (
-    <div ref={wrapRef} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#050810', display: 'flex', flexDirection: 'column' }}>
+    <div ref={wrapRef} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: isDrivingMode ? '#f6f7fb' : '#050810', display: 'flex', flexDirection: 'column' }}>
 
       {/* ─── MAPA ─────────────────────────────────────────────────────── */}
       <div ref={mapElRef} style={{ flex: 1, width: '100%', position: 'relative', minHeight: 0 }}>
@@ -591,8 +602,8 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
               }}>
               <div style={{
                 margin: '0 12px',
-                background: 'linear-gradient(135deg,rgba(0,243,255,0.15),rgba(0,60,150,0.6))',
-                borderRadius: 20, border: '1px solid rgba(0,243,255,0.45)',
+                background: isDrivingMode ? '#5b36ff' : 'linear-gradient(135deg,rgba(0,243,255,0.15),rgba(0,60,150,0.6))',
+                borderRadius: 20, border: isDrivingMode ? '1px solid rgba(91,54,255,0.4)' : '1px solid rgba(0,243,255,0.45)',
                 backdropFilter: 'blur(20px)',
                 boxShadow: '0 8px 40px rgba(0,243,255,0.3)', padding: '14px 16px'
               }}>
@@ -735,7 +746,7 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
 
       {/* ─── PAINEL INFERIOR ──────────────────────────────────────────── */}
       <div style={{
-        background: '#0a0d16', borderTop: '1px solid rgba(0,243,255,0.1)',
+        background: isDrivingMode ? '#ffffff' : '#0a0d16', borderTop: isDrivingMode ? '1px solid rgba(15,23,42,0.10)' : '1px solid rgba(0,243,255,0.1)',
         flexShrink: 0, transition: 'max-height 0.3s ease',
         maxHeight: nav && !bottomOpen ? 0 : 999, overflow: nav && !bottomOpen ? 'hidden' : 'visible'
       }}>
@@ -854,7 +865,7 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
                     boxShadow: rd ? `0 0 28px rgba(0,243,255,0.4),0 6px 20px rgba(0,0,0,0.3)` : 'none'
                   }}>
                   <Navigation style={{ width: 20, height: 20 }} strokeWidth={2.5} />
-                  {isMobile ? 'Navegar no mapa' : `Iniciar navegação ${isDrivingMode ? 'Waze 3D' : '3D'}`}
+                  {isMobile ? 'Navegar no mapa' : `Iniciar navegação ${isDrivingMode ? 'modo Waze' : '3D'}`}
                 </motion.button>
               </div>
             ) : tracking ? (

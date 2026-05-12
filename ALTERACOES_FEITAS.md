@@ -1,22 +1,14 @@
-# Alterações feitas nesta versão
+# Alterações feitas — correção Carro/Moto
 
-- Mantida a estética visual principal do site.
-- Adicionadas as opções **Carro** e **Moto** ao lado de Ônibus, Metrô e Caminhada.
-- Criada rota direta por **TomTom Routing** para Caminhada, Carro e Moto.
-- O modal de navegação agora aceita os modos:
-  - `walk` / pedestre;
-  - `car` / carro;
-  - `motorcycle` / moto.
-- Ajustado o painel de navegação 3D para funcionar estilo Waze: mapa em perspectiva, câmera seguindo GPS, instrução superior, ETA/distância e botão de iniciar navegação.
-- Ajustado o botão “Abrir Maps” para abrir como caminhada ou direção conforme o modo selecionado.
-- Removido `package-lock.json` para evitar registry interno e erro de timeout no deploy da Vercel.
-- Removido fallback de chave TomTom hardcoded; configure `VITE_TOMTOM_API_KEY` na Vercel.
+## Corrigido
 
-## Variáveis necessárias na Vercel
+- Corrigido bug em que Carro/Moto podia usar `fromStop/origem` como destino dentro do modal de navegação.
+- Agora as rotas diretas usam as coordenadas reais pesquisadas (`fromLat/fromLon` e `toLat/toLon`).
+- Adicionada trava de segurança: se a rota de carro/moto passar de 180 km em linha reta, o app mostra aviso em vez de desenhar uma rota absurda.
+- O modal agora abre via portal no `document.body`, evitando ficar preso dentro do container do site e aparecer estreito/centralizado com bordas pretas.
+- Visual do modo Carro/Moto foi ajustado para ficar mais limpo e próximo de navegação tipo Waze: mapa claro, rota roxa e botão com texto mais correto.
+- Mantidos os cards de Ônibus, Metrô, Caminhada, Carro e Moto no mesmo padrão visual do site.
 
-```env
-VITE_TOMTOM_API_KEY=SUA_CHAVE_TOMTOM
-VITE_ORS_API_KEY=SUA_CHAVE_OPENROUTESERVICE
-VITE_TRANSITLAND_API_KEY=SUA_CHAVE_TRANSITLAND
-VITE_DFTRANS_WORKER_URL=
-```
+## Observação
+
+Carro e Moto usam a API TomTom. A variável `VITE_TOMTOM_API_KEY` precisa estar configurada na Vercel.

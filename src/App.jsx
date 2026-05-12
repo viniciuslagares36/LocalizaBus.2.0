@@ -667,7 +667,7 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
     });
   };
 
-  const combineRoutes = (itineraries, _stops, origin, destination, mode) => {
+  const combineRoutes = (itineraries, _stops, origin, destination, mode, coordsMeta = {}) => {
     if (!itineraries?.length) return [];
     const out = [];
     itineraries.forEach((it, idx) => {
@@ -704,6 +704,10 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
             isNavigationRoute: true,
             navigationMode: navMode,
             routePoints: legs.flatMap((leg) => leg.legGeometry?.points || []),
+            fromLat: coordsMeta.originCoords?.lat ?? null,
+            fromLon: coordsMeta.originCoords?.lon ?? null,
+            toLat: coordsMeta.destCoords?.lat ?? null,
+            toLon: coordsMeta.destCoords?.lon ?? null,
           });
         }
 
@@ -1378,7 +1382,8 @@ const searchRoute = async (originAddress, destinationAddress, mode) => {
       nearbyStops,
       originAddress,
       destinationAddress,
-      mode
+      mode,
+      { originCoords, destCoords }
     );
 
     if (mode === 'bus') {
@@ -1460,6 +1465,10 @@ const searchRoute = async (originAddress, destinationAddress, mode) => {
         navigationMode: 'walk',
         isLive: false,
         nearbyStops,
+        fromLat: originCoords.lat,
+        fromLon: originCoords.lon,
+        toLat: destCoords.lat,
+        toLon: destCoords.lon,
       }];
     }
 
@@ -1491,6 +1500,10 @@ const searchRoute = async (originAddress, destinationAddress, mode) => {
         navigationMode: apiMode,
         isLive: false,
         nearbyStops,
+        fromLat: originCoords.lat,
+        fromLon: originCoords.lon,
+        toLat: destCoords.lat,
+        toLon: destCoords.lon,
       }];
     }
 

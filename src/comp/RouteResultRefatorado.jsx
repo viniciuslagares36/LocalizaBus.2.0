@@ -4,6 +4,7 @@
 // Botões: estética neon cyan #00f3ff mantida
 // Ajuste: badge ao vivo agora mostra minutos desde a última atualização do GPS
 import React, { useMemo, useCallback, useState, memo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bus, Train, Clock, MapPin, Footprints, ArrowRight, ExternalLink, Car, Bike } from 'lucide-react';
 import WalkingMapModal from './WalkingMapModal';
@@ -713,13 +714,14 @@ const liveMarkers = useMemo(
   return (
     <>
       <AnimatePresence>
-        {walkRoute && (
+        {walkRoute && createPortal(
           <WalkingMapModal
             route={walkRoute}
             userLocation={userLocation}
             onClose={handleClose}
             isDark={isDark}
-          />
+          />,
+          document.body
         )}
       </AnimatePresence>
 
