@@ -1767,45 +1767,84 @@ const getLineBadgeStyle = (line, routeColor, routeTextColor) => {
 };
 // ─── LOCATION INPUT ──────────────────────────────
 // ─── LOCATION INPUT ──────────────────────────────
-const LocationInput = ({
-  value,
-  onChange,
-  placeholder,
-  icon: Icon,
-  onDetectLocation,
-  detectingLocation,
-  onMapPickClick,
-  showMapPickButton = false,
-}) => {
-  const [suggestions, setSuggestions] = useState([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [sugLoading, setSugLoading] = useState(false);
-  const inputRef = useRef(null);
-  const debRef = useRef(null);
-  const abortRef = useRef(null);
+const fetchSuggestions = async (q) => {
+  const safe = sanitizeInput(q);
 
-  // Adicionar na função fetchSuggestions do LocationInput em App.jsx
-  const fetchSuggestions = async (q) => {
-    const safe = sanitizeInput(q);
+  if (!safe) {
+    setSuggestions([]);
+    return;
+  }
 
-    // Se o usuário digitou número de linha (ex: 400, 401, 411.2),
-    // mostra uma sugestão própria com badge da linha e NÃO busca endereço.
-    if (isBusLineSearch(safe)) {
-      setSuggestions([buildBusLineSuggestion(safe)]);
-      setShowSuggestions(true);
-      setSugLoading(false);
-      return;
-    }
+  const isNumericLineQuery = /^[0-9.]{1,8}$/.test(safe);
 
-    if (!safe || safe.length < 3) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-
-    abortRef.current?.abort();
-    abortRef.current = new AbortController();
+  if (isNumericLineQuery) {
     setSugLoading(true);
+
+    try {
+      const lineResults = await searchSemobRoutesByLine(safe, {
+        limit: 20,
+      });
+
+      const lineSuggestions = lineResults.map((route) => ({
+        source: route.agencyName || 'SEMOB/DF',
+        isBusLine: true,
+        line: route.line,
+        lineName: route.name || route.longName || `Linha ${route.line}`,
+        color: route.color,
+        textColor: route.textColor,
+        poi: {
+          name: route.name || `Linha ${route.line}`,
+        },
+        address: {
+          freeformAddress: route.name || `Linha ${route.line}`,
+          municipality: 'Linha de ônibus',
+          countrySubdivision: 'Distrito Federal',
+        },
+        position: null,
+      }));
+
+      if (lineSuggestions.length > 0) {
+        setSuggestions(lineSuggestions);
+        setShowSuggestions(true);
+        return;
+      }
+
+      setSuggestions([
+        {
+          source: 'Linha de ônibus',
+          isBusLine: true,
+          line: safe,
+          lineName: `Consultar linha ${safe}`,
+          color: null,
+          textColor: null,
+          poi: {
+            name: `Consultar linha ${safe}`,
+          },
+          address: {
+            freeformAddress: `Consultar linha ${safe}`,
+            municipality: 'DFTrans GPS',
+            countrySubdivision: 'Distrito Federal',
+          },
+          position: null,
+        },
+      ]);
+      setShowSuggestions(true);
+      return;
+    } catch (error) {
+      console.warn('[line suggestions]', error?.message || error);
+    } finally {
+      setSugLoading(false);
+    }
+  }
+
+  if (safe.length < 3) {
+    setSuggestions([]);
+    return;
+  }
+
+  abortRef.current?.abort();
+  abortRef.current = new AbortController();
+  setSugLoading(true);
 
     try {
       const localResults = await findLocalDfPlaces(safe, { limit: 12 });
