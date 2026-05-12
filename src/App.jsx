@@ -1977,7 +1977,7 @@ const LocationInput = ({
   }, []);
 
   return (
-    <div className="relative z-[6000]" ref={inputRef}>
+    <div className="relative z-[9000] overflow-visible" ref={inputRef}>
       <div className="absolute left-3 md:left-4 top-1/2 -translate-y-1/2 z-10">
         <div className="rounded-full bg-[var(--accent)]/10 p-1 md:p-1.5">
           <Icon
@@ -2041,7 +2041,7 @@ const LocationInput = ({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.14 }}
-            className="absolute z-[9999] w-full mt-1.5 bg-[var(--dropdown-bg)] backdrop-blur-xl rounded-xl shadow-2xl border border-[var(--border)] max-h-72 overflow-y-auto"
+            className="absolute left-0 top-full z-[99999] w-full mt-1.5 bg-[var(--dropdown-bg)] backdrop-blur-xl rounded-xl shadow-2xl border border-[var(--border)] max-h-72 overflow-y-auto"
           >
             {suggestions.map((s, i) => {
               const isLineSuggestion = s.isBusLine || s.type === 'bus-line';
@@ -2501,7 +2501,7 @@ const canSearch = selectedMode === 'bus'
       <ThemeToggle dark={dark} onToggle={() => setDark(d => !d)} />
 
       {/* HERO */}
-      <div className="relative h-screen flex items-center justify-center overflow-hidden">
+      <div className="relative h-screen flex items-center justify-center overflow-visible">
         <AnimatePresence mode="wait">
           <motion.div key={activeSlide}
             initial={{ opacity: 0 }}
@@ -2611,7 +2611,7 @@ const canSearch = selectedMode === 'bus'
         duration: 0.35,
         ease: [0.22, 1, 0.36, 1],
       }}
-      className="relative z-0 mt-4 overflow-hidden rounded-2xl border border-[var(--border)]"
+      className="relative z-0 mt-4 overflow-visible rounded-2xl border border-[var(--border)]"
     >
       <LeafletMap
         center={
