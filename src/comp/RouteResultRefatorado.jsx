@@ -3,7 +3,7 @@
 // Deep Link: geo: / maps:// para app nativo de GPS
 // Botões: estética neon cyan #00f3ff mantida
 // Ajuste: badge ao vivo agora mostra minutos desde a última atualização do GPS
-import React, { useMemo, useCallback, useState, useEffect, memo } from 'react';
+import React, { useMemo, useCallback, useState, useEffect, useRef, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bus, Train, Clock, MapPin, Footprints, ArrowRight, ExternalLink, Car, Bike } from 'lucide-react';
@@ -258,15 +258,25 @@ const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCou
     );
   }, [route.toStop, route.destination, route.toLat, route.toLon, route.navigationMode]);
 
-  const handleWalkOpen = useCallback((event) => {
+  const openNavigationModal = useCallback((event) => {
     event?.preventDefault?.();
     event?.stopPropagation?.();
 
+    const modalRoute = {
+      ...route,
+      _modalOpenId: `${route.id || 'rota'}-${Date.now()}`,
+    };
+
+    // Abre pelo callback normal e também por evento global como fallback.
+    // Isso evita o problema do botão parecer "sem resposta" caso o componente seja remontado.
     if (typeof onWalkOpen === 'function') {
-      onWalkOpen({
-        ...route,
-        _modalOpenId: `${route.id || 'rota'}-${Date.now()}`,
-      });
+      onWalkOpen(modalRoute);
+    }
+
+    try {
+      window.dispatchEvent(new CustomEvent('localizabus:openNavigationModal', { detail: modalRoute }));
+    } catch (_) {
+      // Sem fallback visual aqui para não quebrar o fluxo normal.
     }
   }, [route, onWalkOpen]);
 
@@ -400,7 +410,9 @@ const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCou
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.95 }}
                 type="button"
-                onClick={handleWalkOpen}
+                onClick={openNavigationModal}
+                onMouseDown={openNavigationModal}
+                onTouchStart={openNavigationModal}
                 className="rounded-full px-3 py-1.5 text-xs font-semibold flex items-center gap-1"
                 style={{
                   background: 'rgba(0,243,255,0.1)',
@@ -444,7 +456,9 @@ const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCou
                 <motion.button
                   whileHover={{ scale: 1.04 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={handleWalkOpen}
+                  onClick={openNavigationModal}
+                onMouseDown={openNavigationModal}
+                onTouchStart={openNavigationModal}
                   className="rounded-full px-3 py-1.5 text-xs font-semibold flex items-center gap-1"
                   style={{
                     background: 'rgba(0,243,255,0.07)',
@@ -504,6 +518,7 @@ const RouteResultRefatorado = ({
   const [walkRoute, setWalkRoute] = useState(null);
   const [walkModalKey, setWalkModalKey] = useState(null);
   const [selectedRouteId, setSelectedRouteId] = useState(null);
+  const lastOpenRef = useRef(0);
 
 const processedRoutes = useMemo(() => {
   if (!routes?.length) return [];
@@ -712,11 +727,27 @@ const liveMarkers = useMemo(
     return firstBus ? [firstBus.lon, firstBus.lat] : null;
   }, [processedRoutes, liveMarkers]);
   const handleWalkOpen = useCallback((route) => {
-    const modalId = route?._modalOpenId || `${route?.id || 'rota'}-${Date.now()}`;
+    if (!route) return;
+
+    const now = Date.now();
+    // Evita abrir duas vezes por causa dos fallbacks onMouseDown/onClick/onTouchStart.
+    if (now - lastOpenRef.current < 450) return;
+    lastOpenRef.current = now;
+
+    const modalId = route?._modalOpenId || `${route?.id || 'rota'}-${now}`;
     setWalkModalKey(modalId);
     setWalkRoute({ ...route, _modalOpenId: modalId });
     document.body.style.overflow = 'hidden';
   }, []);
+
+  useEffect(() => {
+    const openFromEvent = (event) => {
+      if (event?.detail) handleWalkOpen(event.detail);
+    };
+
+    window.addEventListener('localizabus:openNavigationModal', openFromEvent);
+    return () => window.removeEventListener('localizabus:openNavigationModal', openFromEvent);
+  }, [handleWalkOpen]);
 
   const handleClose = useCallback(() => {
     setWalkRoute(null);
@@ -742,18 +773,16 @@ const liveMarkers = useMemo(
 
   return (
     <>
-      <AnimatePresence>
-        {walkRoute && createPortal(
-          <WalkingMapModal
-            key={walkModalKey || walkRoute?._modalOpenId || walkRoute?.id || 'walking-modal'}
-            route={walkRoute}
-            userLocation={userLocation}
-            onClose={handleClose}
-            isDark={isDark}
-          />,
-          document.body
-        )}
-      </AnimatePresence>
+      {walkRoute ? createPortal(
+        <WalkingMapModal
+          key={walkModalKey || walkRoute?._modalOpenId || walkRoute?.id || 'walking-modal'}
+          route={walkRoute}
+          userLocation={userLocation}
+          onClose={handleClose}
+          isDark={isDark}
+        />,
+        document.body
+      ) : null}
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}

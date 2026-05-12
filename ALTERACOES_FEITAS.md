@@ -20,3 +20,9 @@ Carro e Moto usam a API TomTom. A variável `VITE_TOMTOM_API_KEY` precisa estar 
 - Overlay aumentado para z-index máximo para não ficar escondido atrás do app.
 - Navegação interna agora mostra erro claro quando GPS/permissão de localização falha.
 - Adicionada validação de chave TomTom ausente.
+
+## Correção adicional — botão Navegar sem resposta
+- Removido `AnimatePresence` ao redor do portal do modal de navegação para evitar falha silenciosa de montagem.
+- Botão Navegar agora usa fallback por evento global `localizabus:openNavigationModal`.
+- Adicionados handlers extras `onMouseDown` e `onTouchStart` com trava anti-duplo-clique.
+- Corrigido trecho duplicado em `RouteResultRefatorado.jsx` que podia quebrar build em alguns ambientes.
