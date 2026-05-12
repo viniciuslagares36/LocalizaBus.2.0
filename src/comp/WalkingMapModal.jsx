@@ -1,6 +1,6 @@
 // src/comp/WalkingMapModal.jsx
 // ✅ FIX: Mapa visual agora usa Mapbox GL JS navigation-day/night
-// ✅ FIX: Navegação 3D real pitch:60, zoom:17.5, bearing da rota/GPS
+// ✅ CLEAN: Mapa Mapbox mais limpo, com câmera de navegação e UI menos pesada
 // ✅ FIX: Strip de tags HTML nas instruções (<street>, <b>, etc.)
 // ✅ FIX: Painel inferior com contraste correto dark/light
 // ✅ FIX: Mapa inicia em modo navegação (pitch 60, centrado no usuário/origem)
@@ -327,8 +327,8 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
           container: mapElRef.current,
           style: getMapboxStyle(isDark),
           center: [o.lon, o.lat],
-          zoom: 17.5,
-          pitch: 60,
+          zoom: 18.2,
+          pitch: 52,
           bearing: 0,
           attributionControl: false,
           cooperativeGestures: false,
@@ -341,38 +341,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
         map.on('load', () => {
           if (!alive) return;
 
-          // Prédios 3D do estilo Mapbox. Se o estilo não tiver composite/building, ignora sem quebrar.
-          try {
-            if (map.getSource('composite') && !map.getLayer('3d-buildings')) {
-              const layers = map.getStyle().layers || [];
-              const labelLayerId = layers.find(
-                (layer) => layer.type === 'symbol' && layer.layout?.['text-field']
-              )?.id;
-
-              map.addLayer({
-                id: '3d-buildings',
-                source: 'composite',
-                'source-layer': 'building',
-                filter: ['==', 'extrude', 'true'],
-                type: 'fill-extrusion',
-                minzoom: 14,
-                paint: {
-                  'fill-extrusion-color': isDark ? '#151b24' : '#d9dde6',
-                  'fill-extrusion-height': [
-                    'interpolate', ['linear'], ['zoom'],
-                    14, 0,
-                    16, ['get', 'height'],
-                  ],
-                  'fill-extrusion-base': [
-                    'interpolate', ['linear'], ['zoom'],
-                    14, 0,
-                    16, ['get', 'min_height'],
-                  ],
-                  'fill-extrusion-opacity': isDark ? 0.65 : 0.55,
-                },
-              }, labelLayerId);
-            }
-          } catch (_) { }
+          // Visual limpo: sem camada extra de prédios 3D para não ficar com cara de simulador.
 
           if (destRef.current) addDestPin(map, destRef.current);
           addUserPin(map, o);
@@ -420,8 +389,8 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
           setBrng(b);
           m.easeTo({
             center: [o.lon, o.lat],
-            zoom: 17.5,
-            pitch: 60,
+            zoom: 18.2,
+            pitch: 52,
             bearing: b,
             duration: 900,
           });
@@ -442,28 +411,24 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
     safe(() => {
       if (m.getSource('wr')) { m.getSource('wr').setData(data.geo); return; }
       m.addSource('wr', { type: 'geojson', data: data.geo });
+      // Linha limpa: sombra discreta + rota azul, sem neon pesado.
       m.addLayer({
         id: 'wr-shadow', type: 'line', source: 'wr',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#000', 'line-width': 18, 'line-opacity': 0.3, 'line-blur': 8 }
-      });
-      m.addLayer({
-        id: 'wr-border', type: 'line', source: 'wr',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': isDrivingMode ? '#6c4cff' : '#00f3ff', 'line-width': 12, 'line-opacity': 0.9 }
+        paint: { 'line-color': isDark ? '#020617' : '#ffffff', 'line-width': 14, 'line-opacity': 0.88 }
       });
       m.addLayer({
         id: 'wr-fill', type: 'line', source: 'wr',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': isDrivingMode ? '#5b36ff' : '#0051cc', 'line-width': 8, 'line-opacity': 1 }
+        paint: { 'line-color': isDrivingMode ? '#2563eb' : '#06b6d4', 'line-width': 8, 'line-opacity': 1 }
       });
       m.addLayer({
-        id: 'wr-glow', type: 'line', source: 'wr',
+        id: 'wr-soft-highlight', type: 'line', source: 'wr',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#fff', 'line-width': 2, 'line-opacity': 0.55 }
+        paint: { 'line-color': '#dbeafe', 'line-width': 2, 'line-opacity': 0.65 }
       });
     });
-  }, [isDrivingMode]);
+  }, [isDrivingMode, isDark]);
 
   // ✅ FIX: fitAll (visão geral) usa pitch 0 e fitBounds
   const fitAll = useCallback((m, pts) => {
@@ -471,7 +436,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
     const lons = pts.map(p => p[0]), lats = pts.map(p => p[1]);
     m.fitBounds(
       [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
-      { padding: { top: 120, bottom: 220, left: 48, right: 48 }, duration: 900, pitch: 0, bearing: 0 }
+      { padding: { top: 96, bottom: 150, left: 44, right: 44 }, duration: 850, pitch: 0, bearing: 0 }
     );
   }, []);
 
@@ -480,30 +445,29 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
     if (!m) return;
     const el = document.createElement('div');
     el.innerHTML = `
-      <div style="display:flex;flex-direction:column;align-items:center;">
-        <div style="width:44px;height:44px;border-radius:50% 50% 50% 0;
-          background:linear-gradient(135deg,#00f3ff,#0051cc);
-          border:3px solid #fff;box-shadow:0 4px 18px rgba(0,243,255,0.65);
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+        <div style="width:34px;height:34px;border-radius:18px 18px 18px 4px;
+          background:${isDark ? '#0f172a' : '#ffffff'};
+          border:2px solid ${isDrivingMode ? '#2563eb' : '#06b6d4'};
+          box-shadow:0 6px 18px rgba(0,0,0,0.28);
           transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;">
-          <span style="transform:rotate(45deg);font-size:18px;">${route.isWalk ? '🏁' : navigationMode === 'motorcycle' ? '🏍️' : '🚗'}</span>
+          <span style="transform:rotate(45deg);font-size:14px;">🏁</span>
         </div>
       </div>`;
     new mapboxgl.Marker({ element: el, anchor: 'bottom' }).setLngLat([d.lon, d.lat]).addTo(m);
-  }, [route.isWalk, navigationMode]);
+  }, [isDark, isDrivingMode]);
 
   const addUserPin = useCallback((m, pos) => {
     if (!m || markerRef.current) return;
     const el = document.createElement('div');
-    el.style.cssText = 'position:relative;width:36px;height:36px;';
+    el.style.cssText = 'position:relative;width:42px;height:42px;display:flex;align-items:center;justify-content:center;';
     el.innerHTML = `
-      <div style="position:absolute;inset:0;border-radius:50%;background:rgba(0,243,255,0.15);animation:wpu 2.2s ease-out infinite;"></div>
-      <div style="position:absolute;inset:0;border-radius:50%;background:rgba(0,243,255,0.08);animation:wpu 2.2s ease-out 0.7s infinite;"></div>
-      <div style="position:absolute;inset:6px;border-radius:50%;background:#00f3ff;border:3px solid #fff;
-        box-shadow:0 2px 12px rgba(0,243,255,0.9),0 0 24px rgba(0,243,255,0.4);
-        display:flex;align-items:center;justify-content:center;">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="white"><path d="M12 2L7 21l5-3.5 5 3.5z"/></svg>
-      </div>
-      <style>@keyframes wpu{0%{transform:scale(1);opacity:.7}100%{transform:scale(3.5);opacity:0}}</style>`;
+      <div style="position:absolute;inset:0;border-radius:50%;background:rgba(37,99,235,0.14);"></div>
+      <div class="nav-arrow" style="width:30px;height:30px;border-radius:50%;background:#2563eb;border:3px solid #fff;
+        box-shadow:0 6px 18px rgba(0,0,0,0.35),0 0 0 5px rgba(37,99,235,0.14);
+        display:flex;align-items:center;justify-content:center;transition:transform .25s ease;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="white" style="transform:translateY(-1px)"><path d="M12 2L5 22l7-4 7 4L12 2z"/></svg>
+      </div>`;
     markerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([pos.lon, pos.lat]).addTo(m);
   }, []);
 
@@ -528,10 +492,21 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
     setBrng(b);
     const m = mapRef.current;
     if (m) {
-      if (markerRef.current) markerRef.current.setLngLat([lo, la]);
-      else addUserPin(m, { lat: la, lon: lo });
-      // ✅ FIX: modo navegação com pitch 60, zoom 17.5, bearing do GPS
-      if (!overview) m.easeTo({ center: [lo, la], zoom: 17.5, pitch: 60, bearing: b, duration: 700, easing: t => t });
+      if (markerRef.current) {
+        markerRef.current.setLngLat([lo, la]);
+        const arrow = markerRef.current.getElement()?.querySelector('.nav-arrow');
+        if (arrow) arrow.style.transform = `rotate(${b}deg)`;
+      } else addUserPin(m, { lat: la, lon: lo });
+      // Câmera mais próxima e menos aérea, mantendo o usuário mais para baixo da tela.
+      if (!overview) m.easeTo({
+        center: [lo, la],
+        zoom: 18.4,
+        pitch: 56,
+        bearing: b,
+        padding: { top: 80, bottom: 260, left: 0, right: 0 },
+        duration: 650,
+        easing: t => t
+      });
       const rd2 = rdRef.current;
       if (rd2 && m.getSource('wr')) drawRoute(m, rd2);
     }
@@ -595,7 +570,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
     if (watchRef.current != null) navigator.geolocation.clearWatch(watchRef.current);
     clearInterval(timerRef.current);
     const m = mapRef.current;
-    if (m) m.easeTo({ pitch: 45, bearing: 0, zoom: 15, duration: 700 });
+    if (m) m.easeTo({ pitch: 38, bearing: 0, zoom: 16, duration: 650 });
   }, []);
 
   const stopNav = useCallback(() => {
@@ -608,7 +583,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
       // Volta para modo navegação centrado na origem com pitch 60
       const o = origRef.current;
       if (o) {
-        m.easeTo({ center: [o.lon, o.lat], zoom: 17.5, pitch: 60, bearing: rd2.initialBearing || 0, duration: 700 });
+        m.easeTo({ center: [o.lon, o.lat], zoom: 18.2, pitch: 52, bearing: rd2.initialBearing || 0, duration: 650 });
       }
     }
     if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
@@ -627,10 +602,10 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
           fitAll(m, rdRef.current?.pts);
         } else if (lastRef.current) {
           // Retorno à navegação: pitch 60, bearing do GPS
-          m.easeTo({ center: [lastRef.current.lon, lastRef.current.lat], zoom: 17.5, pitch: 60, bearing: brng, duration: 700 });
+          m.easeTo({ center: [lastRef.current.lon, lastRef.current.lat], zoom: 18.4, pitch: 56, bearing: brng, padding: { top: 80, bottom: 260, left: 0, right: 0 }, duration: 650 });
         } else if (origRef.current) {
           const o = origRef.current;
-          m.easeTo({ center: [o.lon, o.lat], zoom: 17.5, pitch: 60, bearing: rdRef.current?.initialBearing || 0, duration: 700 });
+          m.easeTo({ center: [o.lon, o.lat], zoom: 18.2, pitch: 52, bearing: rdRef.current?.initialBearing || 0, duration: 650 });
         }
       }
       return next;
@@ -647,22 +622,23 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
   const destCoords = destRef.current;
 
   // ─── Design tokens: adapta dark/light ────────────────────────────────────
-  const C = isDrivingMode ? '#5b36ff' : '#00f3ff';
+  const C = '#00d5ff';
+  const routeBlue = isDrivingMode ? '#2563eb' : '#06b6d4';
 
   // ✅ FIX: cores do painel inferior com contraste correto dark vs light
-  const panelBg = isDark ? '#0a0d16' : '#ffffff';
-  const panelBorder = isDark ? '1px solid rgba(0,243,255,0.1)' : '1px solid rgba(0,0,0,0.08)';
+  const panelBg = isDark ? 'rgba(5,8,16,0.96)' : 'rgba(255,255,255,0.96)';
+  const panelBorder = isDark ? '1px solid rgba(0,213,255,0.12)' : '1px solid rgba(0,0,0,0.08)';
   const panelText = isDark ? '#ffffff' : '#111827';
   const panelSubText = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(17,24,39,0.55)';
   const panelAccent = isDark ? 'rgba(0,243,255,0.04)' : 'rgba(0,0,0,0.04)';
   const panelAccentBorder = isDark ? '1px solid rgba(0,243,255,0.09)' : '1px solid rgba(0,0,0,0.08)';
-  const panelLabelColor = isDark ? 'rgba(0,243,255,0.4)' : 'rgba(0,60,160,0.55)';
+  const panelLabelColor = isDark ? 'rgba(0,213,255,0.65)' : 'rgba(37,99,235,0.75)';
 
   const neon = {
-    border: `1.5px solid rgba(0,243,255,0.5)`,
-    background: 'linear-gradient(135deg,rgba(0,243,255,0.12),rgba(0,60,160,0.4))',
-    boxShadow: `0 0 20px rgba(0,243,255,0.22),0 6px 20px rgba(0,0,0,0.3)`,
-    color: C, fontWeight: 800, borderRadius: 18,
+    border: isDark ? '1px solid rgba(0,213,255,0.28)' : '1px solid rgba(37,99,235,0.18)',
+    background: isDark ? 'linear-gradient(135deg,rgba(0,213,255,0.10),rgba(37,99,235,0.22))' : 'linear-gradient(135deg,#eff6ff,#dbeafe)',
+    boxShadow: isDark ? '0 10px 26px rgba(0,0,0,0.28)' : '0 10px 22px rgba(37,99,235,0.12)',
+    color: isDark ? '#dffcff' : '#1d4ed8', fontWeight: 800, borderRadius: 18,
   };
 
   // Fundo do wrapper: dark=escuro, light=claro neutro
@@ -740,15 +716,15 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
               }}>
               <div style={{
                 margin: '0 12px',
-                background: isDrivingMode ? '#5b36ff' : 'linear-gradient(135deg,rgba(0,243,255,0.15),rgba(0,60,150,0.6))',
-                borderRadius: 20, border: isDrivingMode ? '1px solid rgba(91,54,255,0.4)' : '1px solid rgba(0,243,255,0.45)',
-                backdropFilter: 'blur(20px)',
-                boxShadow: '0 8px 40px rgba(0,243,255,0.3)', padding: '14px 16px'
+                background: isDark ? 'rgba(6,12,22,0.92)' : 'rgba(255,255,255,0.94)',
+                borderRadius: 22, border: isDark ? '1px solid rgba(0,213,255,0.16)' : '1px solid rgba(0,0,0,0.08)',
+                backdropFilter: 'blur(18px)',
+                boxShadow: '0 14px 36px rgba(0,0,0,0.25)', padding: '14px 16px'
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   <div style={{
                     width: 56, height: 56, borderRadius: 14,
-                    background: 'rgba(0,243,255,0.15)', border: '1px solid rgba(0,243,255,0.3)',
+                    background: routeBlue, border: '1px solid rgba(255,255,255,0.18)',
                     flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'
                   }}>
                     <ManIcon type={curI.man} size={28} />
@@ -756,11 +732,11 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
                   <div style={{ flex: 1, minWidth: 0 }}>
                     {/* ✅ FIX: curI.msg já foi limpo de tags HTML no getRoute */}
                     <p style={{
-                      color: '#fff', fontSize: 20, fontWeight: 800, lineHeight: 1.2, margin: 0,
+                      color: isDark ? '#fff' : '#111827', fontSize: 20, fontWeight: 800, lineHeight: 1.2, margin: 0,
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
                     }}>{curI.msg}</p>
                     {nextI && <p style={{
-                      color: 'rgba(0,243,255,0.6)', fontSize: 12, margin: '4px 0 0',
+                      color: isDark ? 'rgba(255,255,255,0.60)' : 'rgba(17,24,39,0.58)', fontSize: 12, margin: '4px 0 0',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
                     }}>
                       Depois: {nextI.msg}</p>}
@@ -892,168 +868,122 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
         )}
       </div>
 
-      {/* ─── PAINEL INFERIOR ──────────────────────────────────────────── */}
-      {/* ✅ FIX: fundo escuro no dark, branco no light; texto com contraste */}
+      {/* ─── PAINEL INFERIOR CLEAN ───────────────────────────────────── */}
       <div style={{
         background: panelBg,
         borderTop: panelBorder,
-        flexShrink: 0, transition: 'max-height 0.3s ease',
-        maxHeight: nav && !bottomOpen ? 0 : 999,
-        overflow: nav && !bottomOpen ? 'hidden' : 'visible'
+        flexShrink: 0,
+        backdropFilter: 'blur(18px)',
+        transition: 'max-height 0.25s ease, opacity 0.25s ease',
+        maxHeight: nav && !bottomOpen ? 0 : 260,
+        opacity: nav && !bottomOpen ? 0 : 1,
+        overflow: 'hidden'
       }}>
-
         {nav && (
           <button onClick={() => setBottomOpen(v => !v)}
             style={{
-              width: '100%', display: 'flex', justifyContent: 'center', padding: '8px 0',
+              width: '100%', display: 'flex', justifyContent: 'center', padding: '8px 0 4px',
               background: 'transparent', border: 'none', cursor: 'pointer'
             }}>
-            <div style={{ width: 36, height: 3, borderRadius: 99, background: isDark ? 'rgba(0,243,255,0.2)' : 'rgba(0,0,0,0.15)' }} />
+            <div style={{ width: 38, height: 4, borderRadius: 99, background: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.14)' }} />
           </button>
         )}
 
-        <div style={{ padding: nav ? '0 20px 20px' : '16px 20px 24px' }}>
+        <div style={{ padding: nav ? '8px 18px 18px' : '14px 18px 18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+            <div style={{
+              width: 38, height: 38, borderRadius: 14,
+              background: isDark ? 'rgba(0,213,255,0.08)' : '#eff6ff',
+              border: isDark ? '1px solid rgba(0,213,255,0.18)' : '1px solid rgba(37,99,235,0.14)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>
+              <MapPin style={{ color: routeBlue, width: 18, height: 18 }} strokeWidth={2.4} />
+            </div>
 
-          {/* Destino + distância */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16,
-            paddingBottom: 14, borderBottom: isDark ? '1px solid rgba(0,243,255,0.07)' : '1px solid rgba(0,0,0,0.07)'
-          }}>
-            <MapPin style={{
-              color: C, width: 18, height: 18, flexShrink: 0,
-              filter: isDark ? 'drop-shadow(0 0 6px rgba(0,243,255,0.6))' : 'none'
-            }} strokeWidth={2} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{
-                color: panelLabelColor, fontSize: 10, fontWeight: 700,
-                textTransform: 'uppercase', letterSpacing: 1, margin: 0
+                color: panelLabelColor, fontSize: 10, fontWeight: 800,
+                textTransform: 'uppercase', letterSpacing: 1.1, margin: 0
               }}>Destino</p>
               <p style={{
-                color: panelText, fontSize: 14, fontWeight: 700, margin: 0,
+                color: panelText, fontSize: 14, fontWeight: 800, margin: '2px 0 0',
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
               }}>{destName}</p>
             </div>
-            {remain != null && (
-              <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <p style={{
-                  color: C, fontSize: 20, fontWeight: 900, margin: 0, lineHeight: 1,
-                  textShadow: isDark ? `0 0 10px rgba(0,243,255,0.5)` : 'none'
-                }}>{dist(remain)}</p>
-                <p style={{ color: panelSubText, fontSize: 11, margin: '2px 0 0' }}>
-                  {eta != null ? mins(eta) : '—'}
-                </p>
-              </div>
-            )}
-          </div>
 
-          {/* Métricas */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
-            {[
-              { label: 'Percorrido', val: dist(covered) },
-              { label: 'Tempo', val: mins(elapsed) },
-              { label: 'Precisão', val: acc != null ? `±${acc}m` : '—' },
-            ].map(({ label, val }) => (
-              <div key={label} style={{
-                background: panelAccent, borderRadius: 14,
-                padding: '10px 8px', textAlign: 'center', border: panelAccentBorder
-              }}>
-                <p style={{ color: panelText, fontSize: 15, fontWeight: 800, margin: 0 }}>{val}</p>
-                <p style={{ color: panelLabelColor, fontSize: 10, margin: '2px 0 0' }}>{label}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Progress bar */}
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ color: panelSubText, fontSize: 10, fontWeight: 600 }}>Progresso</span>
-              <span style={{
-                color: C, fontSize: 10, fontWeight: 800,
-                textShadow: isDark ? `0 0 8px rgba(0,243,255,0.5)` : 'none'
-              }}>{Math.round(pct)}%</span>
+            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+              <p style={{ color: routeBlue, fontSize: 22, fontWeight: 900, margin: 0, lineHeight: 1 }}>
+                {remain != null ? dist(remain) : '—'}
+              </p>
+              <p style={{ color: panelSubText, fontSize: 11, margin: '3px 0 0', fontWeight: 700 }}>
+                {eta != null ? mins(eta) : '—'}
+              </p>
             </div>
-            <div style={{ height: 6, borderRadius: 99, background: isDark ? 'rgba(0,243,255,0.07)' : 'rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-              <motion.div animate={{ width: `${pct}%` }} transition={{ duration: 0.7 }}
-                style={{
-                  height: '100%', borderRadius: 99,
-                  background: `linear-gradient(90deg,${C},#0051cc)`,
-                  boxShadow: isDark ? `0 0 10px rgba(0,243,255,0.6)` : 'none'
-                }} />
-            </div>
-            {rd && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-                <span style={{ color: panelSubText, fontSize: 9 }}>{dist(covered)} feito</span>
-                <span style={{ color: panelSubText, fontSize: 9 }}>{dist(rd.totalM)} total</span>
-              </div>
-            )}
           </div>
 
-          {/* Botões */}
+          <div style={{ height: 5, borderRadius: 99, background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)', overflow: 'hidden', marginBottom: 12 }}>
+            <motion.div animate={{ width: `${pct}%` }} transition={{ duration: 0.55 }}
+              style={{ height: '100%', borderRadius: 99, background: routeBlue }} />
+          </div>
+
           <div style={{ display: 'flex', gap: 10 }}>
             {!nav ? (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {/* Mobile: Deep Link nativo */}
+              <>
                 {isMobile && destCoords && (
                   <motion.button whileTap={{ scale: 0.96 }}
                     onClick={() => openNativeNavigation(destCoords.lat, destCoords.lon, destName, navigationMode)}
                     style={{
-                      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      gap: 10, padding: '14px 20px', cursor: 'pointer', border: 'none',
-                      ...neon, fontSize: 14
-                    }}>
-                    <Smartphone style={{ width: 18, height: 18 }} />
-                    Abrir no Maps (nativo)
+                      width: 58, height: 54, borderRadius: 18, flexShrink: 0,
+                      background: isDark ? 'rgba(255,255,255,0.06)' : '#f8fafc',
+                      border: isDark ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(0,0,0,0.08)',
+                      color: routeBlue, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                    }} title="Abrir no Maps">
+                    <Smartphone style={{ width: 20, height: 20 }} />
                   </motion.button>
                 )}
-                {/* Desktop / Mapa 3D interno */}
-                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }}
+                <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.97 }}
                   onClick={startNav} disabled={!rd}
                   style={{
                     flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    gap: 10, padding: '17px 20px', cursor: rd ? 'pointer' : 'not-allowed', border: 'none',
-                    ...neon,
-                    opacity: rd ? 1 : 0.35, fontSize: 16,
-                    boxShadow: rd ? `0 0 28px rgba(0,243,255,0.4),0 6px 20px rgba(0,0,0,0.3)` : 'none'
+                    gap: 10, padding: '15px 18px', cursor: rd ? 'pointer' : 'not-allowed', border: 'none',
+                    ...neon, opacity: rd ? 1 : 0.4, fontSize: 15
                   }}>
-                  <Navigation style={{ width: 20, height: 20 }} strokeWidth={2.5} />
-                  {isMobile ? 'Navegar no mapa' : `Iniciar navegação ${isDrivingMode ? 'modo Waze' : '3D'}`}
+                  <Navigation style={{ width: 19, height: 19 }} strokeWidth={2.6} />
+                  Iniciar navegação
                 </motion.button>
-              </div>
+              </>
             ) : tracking ? (
-              <motion.button whileTap={{ scale: 0.96 }} onClick={pauseNav}
+              <motion.button whileTap={{ scale: 0.97 }} onClick={pauseNav}
                 style={{
                   flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  gap: 8, padding: '15px 20px', borderRadius: 18,
-                  background: 'linear-gradient(135deg,rgba(255,59,48,0.25),rgba(200,20,10,0.45))',
-                  color: '#ff453a', fontWeight: 800, fontSize: 15,
-                  border: '1px solid rgba(255,59,48,0.4)', cursor: 'pointer',
-                  boxShadow: '0 0 16px rgba(255,59,48,0.15)'
+                  gap: 8, padding: '14px 18px', borderRadius: 18,
+                  background: isDark ? 'rgba(239,68,68,0.12)' : '#fef2f2',
+                  color: '#ef4444', fontWeight: 900, fontSize: 15,
+                  border: isDark ? '1px solid rgba(239,68,68,0.25)' : '1px solid rgba(239,68,68,0.16)', cursor: 'pointer'
                 }}>
-                <Square style={{ width: 17, height: 17 }} fill="currentColor" />
+                <Square style={{ width: 16, height: 16 }} fill="currentColor" />
                 Pausar
               </motion.button>
             ) : (
-              <motion.button whileTap={{ scale: 0.96 }} onClick={startNav}
+              <motion.button whileTap={{ scale: 0.97 }} onClick={startNav}
                 style={{
                   flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  gap: 8, padding: '15px 20px', cursor: 'pointer', border: 'none',
-                  ...neon, fontSize: 15
+                  gap: 8, padding: '14px 18px', cursor: 'pointer', border: 'none', ...neon, fontSize: 15
                 }}>
-                <Play style={{ width: 17, height: 17 }} fill="currentColor" />
+                <Play style={{ width: 16, height: 16 }} fill="currentColor" />
                 Retomar
               </motion.button>
             )}
 
             {nav && (
-              <motion.button whileTap={{ scale: 0.9 }} onClick={stopNav}
+              <motion.button whileTap={{ scale: 0.92 }} onClick={stopNav}
                 style={{
-                  width: 52, height: 52, borderRadius: 16, flexShrink: 0,
-                  background: isDark ? 'rgba(0,243,255,0.04)' : 'rgba(0,0,0,0.05)',
-                  border: isDark ? '1px solid rgba(0,243,255,0.13)' : '1px solid rgba(0,0,0,0.1)',
-                  color: isDark ? 'rgba(0,243,255,0.5)' : '#374151',
-                  display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', cursor: 'pointer'
-                }}>
+                  width: 54, height: 54, borderRadius: 18, flexShrink: 0,
+                  background: isDark ? 'rgba(255,255,255,0.06)' : '#f8fafc',
+                  border: isDark ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(0,0,0,0.08)',
+                  color: isDark ? 'rgba(255,255,255,0.72)' : '#374151',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                }} title="Encerrar navegação">
                 <RotateCcw style={{ width: 18, height: 18 }} />
               </motion.button>
             )}
