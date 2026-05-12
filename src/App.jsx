@@ -1766,85 +1766,128 @@ const getLineBadgeStyle = (line, routeColor, routeTextColor) => {
   };
 };
 // ─── LOCATION INPUT ──────────────────────────────
-// ─── LOCATION INPUT ──────────────────────────────
-const fetchSuggestions = async (q) => {
-  const safe = sanitizeInput(q);
+const LocationInput = ({
+  value,
+  onChange,
+  placeholder,
+  icon: Icon,
+  onDetectLocation,
+  detectingLocation,
+  onMapPickClick,
+  showMapPickButton = false,
+}) => {
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [sugLoading, setSugLoading] = useState(false);
+  const debRef = useRef(null);
+  const abortRef = useRef(null);
+  const inputRef = useRef(null);
 
-  if (!safe) {
-    setSuggestions([]);
-    return;
-  }
+  const fetchSuggestions = async (q) => {
+    const safe = sanitizeInput(q);
 
-  const isNumericLineQuery = /^[0-9.]{1,8}$/.test(safe);
+    if (!safe) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
 
-  if (isNumericLineQuery) {
-    setSugLoading(true);
+    const isNumericLineQuery = /^[0-9.]{1,8}$/.test(safe);
 
-    try {
-      const lineResults = await searchSemobRoutesByLine(safe, {
-        limit: 20,
-      });
+    if (isNumericLineQuery) {
+      setSugLoading(true);
 
-      const lineSuggestions = lineResults.map((route) => ({
-        source: route.agencyName || 'SEMOB/DF',
-        isBusLine: true,
-        line: route.line,
-        lineName: route.name || route.longName || `Linha ${route.line}`,
-        color: route.color,
-        textColor: route.textColor,
-        poi: {
-          name: route.name || `Linha ${route.line}`,
-        },
-        address: {
-          freeformAddress: route.name || `Linha ${route.line}`,
-          municipality: 'Linha de ônibus',
-          countrySubdivision: 'Distrito Federal',
-        },
-        position: null,
-      }));
+      try {
+        const lineResults = await searchSemobRoutesByLine(safe, {
+          limit: 20,
+        });
 
-      if (lineSuggestions.length > 0) {
-        setSuggestions(lineSuggestions);
-        setShowSuggestions(true);
-        return;
-      }
-
-      setSuggestions([
-        {
-          source: 'Linha de ônibus',
+        const lineSuggestions = lineResults.map((route) => ({
+          source: route.agencyName || 'SEMOB/DF',
           isBusLine: true,
-          line: safe,
-          lineName: `Consultar linha ${safe}`,
-          color: null,
-          textColor: null,
+          type: 'bus-line',
+          line: route.line,
+          lineName: route.name || route.longName || `Linha ${route.line}`,
+          color: route.color,
+          textColor: route.textColor,
           poi: {
-            name: `Consultar linha ${safe}`,
+            name: route.name || `Linha ${route.line}`,
           },
           address: {
-            freeformAddress: `Consultar linha ${safe}`,
-            municipality: 'DFTrans GPS',
+            freeformAddress: route.name || `Linha ${route.line}`,
+            municipality: 'Linha de ônibus',
             countrySubdivision: 'Distrito Federal',
           },
           position: null,
-        },
-      ]);
-      setShowSuggestions(true);
-      return;
-    } catch (error) {
-      console.warn('[line suggestions]', error?.message || error);
-    } finally {
-      setSugLoading(false);
+        }));
+
+        if (lineSuggestions.length > 0) {
+          setSuggestions(lineSuggestions);
+          setShowSuggestions(true);
+          return;
+        }
+
+        setSuggestions([
+          {
+            source: 'Linha de ônibus',
+            isBusLine: true,
+            type: 'bus-line',
+            line: safe,
+            lineName: `Consultar linha ${safe}`,
+            color: null,
+            textColor: null,
+            poi: {
+              name: `Consultar linha ${safe}`,
+            },
+            address: {
+              freeformAddress: `Consultar linha ${safe}`,
+              municipality: 'DFTrans GPS',
+              countrySubdivision: 'Distrito Federal',
+            },
+            position: null,
+          },
+        ]);
+        setShowSuggestions(true);
+        return;
+      } catch (error) {
+        console.warn('[line suggestions]', error?.message || error);
+
+        setSuggestions([
+          {
+            source: 'Linha de ônibus',
+            isBusLine: true,
+            type: 'bus-line',
+            line: safe,
+            lineName: `Consultar linha ${safe}`,
+            color: null,
+            textColor: null,
+            poi: {
+              name: `Consultar linha ${safe}`,
+            },
+            address: {
+              freeformAddress: `Consultar linha ${safe}`,
+              municipality: 'DFTrans GPS',
+              countrySubdivision: 'Distrito Federal',
+            },
+            position: null,
+          },
+        ]);
+        setShowSuggestions(true);
+        return;
+      } finally {
+        setSugLoading(false);
+      }
     }
-  }
 
-  if (safe.length < 3) {
-    setSuggestions([]);
-    return;
-  }
+    if (safe.length < 3) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
 
-  abortRef.current?.abort();
-  abortRef.current = new AbortController();
-  setSugLoading(true);
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+    setSugLoading(true);
 
     try {
       const localResults = await findLocalDfPlaces(safe, { limit: 12 });
@@ -1860,9 +1903,9 @@ const fetchSuggestions = async (q) => {
             lon: -47.8828,
             radius: 70000,
             limit: 8,
-            language: 'pt-BR'
+            language: 'pt-BR',
           },
-          signal: abortRef.current.signal
+          signal: abortRef.current.signal,
         }
       );
 
@@ -1885,8 +1928,16 @@ const fetchSuggestions = async (q) => {
 
       const merged = [...localSuggestions, ...tomtomResults]
         .filter((item, index, arr) => {
-          const key = String(item.address?.freeformAddress || item.poi?.name || '').toLowerCase();
-          return key && arr.findIndex((x) => String(x.address?.freeformAddress || x.poi?.name || '').toLowerCase() === key) === index;
+          const key = String(
+            item.address?.freeformAddress || item.poi?.name || ''
+          ).toLowerCase();
+
+          return (
+            key &&
+            arr.findIndex((x) =>
+              String(x.address?.freeformAddress || x.poi?.name || '').toLowerCase() === key
+            ) === index
+          );
         })
         .slice(0, 10);
 
@@ -1895,10 +1946,6 @@ const fetchSuggestions = async (q) => {
     } catch (e) {
       if (!axios.isCancel(e)) {
         console.error('Erro na busca TomTom:', e);
-        // Tratar erro de localização negada
-        if (e.response?.status === 403) {
-          console.warn('Serviço de localização temporariamente indisponível');
-        }
       }
     } finally {
       setSugLoading(false);
@@ -1908,59 +1955,96 @@ const fetchSuggestions = async (q) => {
   const handleChange = (e) => {
     const safe = sanitizeInput(e.target.value);
     onChange(safe);
+
     clearTimeout(debRef.current);
-    debRef.current = setTimeout(() => fetchSuggestions(safe), 500);
+    debRef.current = setTimeout(() => fetchSuggestions(safe), 350);
   };
 
   useEffect(() => {
-    const h = (e) => { if (inputRef.current && !inputRef.current.contains(e.target)) setShowSuggestions(false); };
+    const h = (e) => {
+      if (inputRef.current && !inputRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    };
+
     document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
+
+    return () => {
+      document.removeEventListener('mousedown', h);
+      clearTimeout(debRef.current);
+      abortRef.current?.abort();
+    };
   }, []);
 
   return (
     <div className="relative z-[6000]" ref={inputRef}>
       <div className="absolute left-3 md:left-4 top-1/2 -translate-y-1/2 z-10">
         <div className="rounded-full bg-[var(--accent)]/10 p-1 md:p-1.5">
-          <Icon className="h-3.5 w-3.5 md:h-4 md:w-4 text-[var(--accent)]" strokeWidth={1.5} />
+          <Icon
+            className="h-3.5 w-3.5 md:h-4 md:w-4 text-[var(--accent)]"
+            strokeWidth={1.5}
+          />
         </div>
       </div>
+
       <input
-        type="text" value={value} onChange={handleChange} placeholder={placeholder}
-        autoComplete="off" spellCheck={false} maxLength={300}
+        type="text"
+        value={value}
+        onChange={handleChange}
+        placeholder={placeholder}
+        autoComplete="off"
+        spellCheck={false}
+        maxLength={300}
         onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
         className="w-full rounded-xl md:rounded-2xl border border-[var(--border)] bg-[var(--input-bg)] pl-10 md:pl-12 pr-20 md:pr-28 py-3 md:py-3.5 text-sm md:text-base text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20 transition-all duration-200"
       />
+
       <div className="absolute right-2 md:right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
-        {sugLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--accent)]" />}
+        {sugLoading && (
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--accent)]" />
+        )}
+
         {showMapPickButton && onMapPickClick && (
-  <motion.button
-    whileHover={{ scale: 1.08 }}
-    whileTap={{ scale: 0.92 }}
-    onClick={onMapPickClick}
-    type="button"
-    className="flex items-center justify-center w-7 h-7 rounded-full text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors duration-200"
-    title="Escolher no mapa"
-  >
-    <MapPin className="h-3.5 w-3.5" strokeWidth={2} />
-  </motion.button>
-)}
+          <motion.button
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.92 }}
+            onClick={onMapPickClick}
+            type="button"
+            className="flex items-center justify-center w-7 h-7 rounded-full text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors duration-200"
+            title="Escolher no mapa"
+          >
+            <MapPin className="h-3.5 w-3.5" strokeWidth={2} />
+          </motion.button>
+        )}
+
         {onDetectLocation && (
-          <motion.button whileTap={{ scale: 0.92 }} onClick={onDetectLocation} disabled={detectingLocation}
-            className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] md:text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors duration-200">
-            {detectingLocation ? <Loader2 className="h-3 w-3 animate-spin" /> : <Navigation className="h-3 w-3" />}
+          <motion.button
+            whileTap={{ scale: 0.92 }}
+            onClick={onDetectLocation}
+            disabled={detectingLocation}
+            className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] md:text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors duration-200"
+          >
+            {detectingLocation ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Navigation className="h-3 w-3" />
+            )}
             <span className="hidden sm:inline">Usar local</span>
           </motion.button>
         )}
       </div>
+
       <AnimatePresence>
         {showSuggestions && suggestions.length > 0 && (
-          <motion.div initial={{ opacity: 0, y: -6, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.14 }}
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.14 }}
             className="absolute z-[9999] w-full mt-1.5 bg-[var(--dropdown-bg)] backdrop-blur-xl rounded-xl shadow-2xl border border-[var(--border)] max-h-72 overflow-y-auto"
-            >
+          >
             {suggestions.map((s, i) => {
-              const isLineSuggestion = s.type === 'bus-line';
+              const isLineSuggestion = s.isBusLine || s.type === 'bus-line';
               const label = isLineSuggestion ? s.line : s.address?.freeformAddress;
 
               return (
@@ -1975,22 +2059,32 @@ const fetchSuggestions = async (q) => {
                 >
                   {isLineSuggestion ? (
                     <div className="flex items-center gap-3">
-                      <span className="inline-flex min-w-[3.3rem] items-center justify-center rounded-md border border-lime-300 bg-lime-400 px-2.5 py-1 text-xs font-black tracking-tight text-black shadow-sm">
-                        {s.line}
+                      <span
+                        className="inline-flex min-w-[58px] items-center justify-center rounded-md border px-2.5 py-1 text-xs font-black tracking-tight shadow-sm"
+                        style={getLineBadgeStyle(s.line, s.color, s.textColor)}
+                      >
+                        {getLineBadgeLabel(s.line)}
                       </span>
+
                       <div className="min-w-0">
-                        <p className="text-sm font-bold text-[var(--text-primary)] truncate">
-                          Consultar linha {s.line}
+                        <p className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                          {s.lineName || `Consultar linha ${s.line}`}
                         </p>
                         <p className="text-xs text-[var(--text-tertiary)] truncate">
-                          Ver ônibus ao vivo dessa linha • Ida e volta
+                          {s.source ? `${s.source} • ` : ''}
+                          Ver ônibus ao vivo, ida e volta
                         </p>
                       </div>
                     </div>
                   ) : (
                     <>
-                      <p className="text-sm font-medium text-[var(--text-primary)] truncate">{s.address.freeformAddress}</p>
-                      <p className="text-xs text-[var(--text-tertiary)] truncate">{s.source ? `${s.source} • ` : ''}{s.address.municipality || s.address.countrySubdivision}</p>
+                      <p className="text-sm font-medium text-[var(--text-primary)] truncate">
+                        {s.address?.freeformAddress}
+                      </p>
+                      <p className="text-xs text-[var(--text-tertiary)] truncate">
+                        {s.source ? `${s.source} • ` : ''}
+                        {s.address?.municipality || s.address?.countrySubdivision}
+                      </p>
                     </>
                   )}
                 </button>
