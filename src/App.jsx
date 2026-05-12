@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Bus, Footprints, MapPin, Train, Clock, ArrowRight,
-  ChevronDown, Circle, Navigation, Search, AlertCircle,
+  ChevronDown, Circle, Navigation, Search, AlertCircle, Car, Bike,
   Loader2, Sun, Moon, AlertTriangle
 } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
@@ -263,15 +263,16 @@ const useRouteSearch = () => {
     throw new Error('Endereço não encontrado');
   };
 
-  const getTomTomWalkingPlan = async (origin, destination, signal) => {
+  const getTomTomNavigationPlan = async (origin, destination, signal, mode = 'walk') => {
     try {
       const response = await axios.get(
         `https://api.tomtom.com/routing/1/calculateRoute/${origin.lat},${origin.lon}:${destination.lat},${destination.lon}/json`,
         {
           params: {
             key: TOMTOM_API_KEY,
-            travelMode: 'pedestrian',
-            routeType: 'fastest',
+            travelMode: mode === 'moto' ? 'motorcycle' : mode === 'car' ? 'car' : 'pedestrian',
+            routeType: mode === 'walk' ? 'shortest' : 'fastest',
+            traffic: true,
             instructionsType: 'text',
             language: 'pt-BR',
           },
@@ -289,7 +290,7 @@ const useRouteSearch = () => {
       return [{
         duration: route.summary?.travelTimeInSeconds || 0,
         legs: [{
-          mode: 'WALK',
+          mode: mode === 'moto' ? 'MOTO' : mode === 'car' ? 'CAR' : 'WALK',
           duration: route.summary?.travelTimeInSeconds || 0,
           distance: route.summary?.lengthInMeters || 0,
           from: { name: 'Origem' },
@@ -298,9 +299,10 @@ const useRouteSearch = () => {
         }],
         routePoints: points,
         source: 'TomTom Routing',
+        navigationMode: mode === 'moto' ? 'motorcycle' : mode === 'car' ? 'car' : 'walk',
       }];
     } catch (error) {
-      console.warn('[TomTom walking plan]', error?.message || error);
+      console.warn('[TomTom navigation plan]', error?.message || error);
       return [];
     }
   };
@@ -363,7 +365,11 @@ const useRouteSearch = () => {
     }
 
     if (mode === 'walk') {
-      return getTomTomWalkingPlan(origin, destination, signal);
+      return getTomTomNavigationPlan(origin, destination, signal, 'walk');
+    }
+
+    if (mode === 'car' || mode === 'moto') {
+      return getTomTomNavigationPlan(origin, destination, signal, mode);
     }
 
     return [];
@@ -669,28 +675,35 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
       const totalDur = (it.duration || 0) / 60;
       const totalDist = legs.reduce((s, l) => s + (l.distance || 0), 0) / 1000;
 
-      // Modo caminhada: criar uma rota com as pernas WALK
-      if (mode === 'walk') {
-        const walkLegs = legs.filter(l => l.mode === 'WALK');
+      // Modo navegação direta: caminhada, carro ou moto usando TomTom.
+      if (mode === 'walk' || mode === 'car' || mode === 'moto') {
+        const isWalkMode = mode === 'walk';
+        const label = isWalkMode ? 'A pé' : mode === 'moto' ? 'Moto' : 'Carro';
+        const navMode = isWalkMode ? 'walk' : mode === 'moto' ? 'motorcycle' : 'car';
+        const modeCode = isWalkMode ? 'WALK' : mode === 'moto' ? 'MOTO' : 'CAR';
+        const action = isWalkMode ? 'Caminhe' : `Navegue de ${label.toLowerCase()}`;
 
-        if (walkLegs.length > 0 || it.duration > 0) {
+        if (legs.length > 0 || it.duration > 0) {
           out.push({
-            id: `walk_${idx}`,
-            line: 'A pé',
-            routeId: 'WALK',
+            id: `${mode}_${idx}`,
+            line: label,
+            routeId: modeCode,
             destination,
             origin,
-            time: Math.ceil(totalDur),
+            time: Math.max(1, Math.ceil(totalDur)),
             estimatedTime: totalDur,
             stops: 0,
             distance: totalDist.toFixed(1),
-            walkMinutes: Math.ceil(totalDur),
+            walkMinutes: isWalkMode ? Math.ceil(totalDur) : 0,
             fromStop: legs[0]?.from?.name || origin,
             toStop: legs[legs.length - 1]?.to?.name || destination,
-            mode: 'WALK',
-            instruction: `Caminhe ${totalDist.toFixed(1)} km (~${Math.ceil(totalDur)} min) até o destino`,
+            mode: modeCode,
+            instruction: `${action} ${totalDist.toFixed(1)} km (~${Math.ceil(totalDur)} min) até o destino`,
             tripId: null,
-            isWalk: true,
+            isWalk: isWalkMode,
+            isNavigationRoute: true,
+            navigationMode: navMode,
+            routePoints: legs.flatMap((leg) => leg.legGeometry?.points || []),
           });
         }
 
@@ -1443,6 +1456,39 @@ const searchRoute = async (originAddress, destinationAddress, mode) => {
         instruction: `Caminhe ${distKm.toFixed(1)} km (~${walkMinutes} min) até o destino`,
         tripId: null,
         isWalk: true,
+        isNavigationRoute: true,
+        navigationMode: 'walk',
+        isLive: false,
+        nearbyStops,
+      }];
+    }
+
+    if ((mode === 'car' || mode === 'moto') && finalCombined.length === 0) {
+      const distKm = calcDist(originCoords, destCoords);
+      const averageSpeedKmh = mode === 'moto' ? 38 : 32;
+      const travelMinutes = Math.max(2, Math.ceil((distKm / averageSpeedKmh) * 60));
+      const label = mode === 'moto' ? 'Moto' : 'Carro';
+      const apiMode = mode === 'moto' ? 'motorcycle' : 'car';
+
+      finalCombined = [{
+        id: `${mode}_local`,
+        line: label,
+        routeId: mode.toUpperCase(),
+        destination: destinationAddress,
+        origin: originAddress,
+        time: travelMinutes,
+        estimatedTime: travelMinutes,
+        stops: 0,
+        distance: distKm.toFixed(1),
+        walkMinutes: 0,
+        fromStop: originAddress,
+        toStop: destinationAddress,
+        mode: mode.toUpperCase(),
+        instruction: `Navegue de ${label.toLowerCase()} por ${distKm.toFixed(1)} km (~${travelMinutes} min) até o destino`,
+        tripId: null,
+        isWalk: false,
+        isNavigationRoute: true,
+        navigationMode: apiMode,
         isLive: false,
         nearbyStops,
       }];
@@ -2702,11 +2748,13 @@ const canSearch = selectedMode === 'bus'
 
             <div className="mt-6">
               <p className="text-[10px] font-semibold text-[var(--text-tertiary)] uppercase tracking-widest mb-3">Tipo de transporte</p>
-              <div className="grid grid-cols-3 gap-2 md:gap-3">
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-5 md:gap-3">
                 {[
                   { name: 'Ônibus', type: 'bus', icon: Bus, desc: 'DFTrans GPS' },
                   { name: 'Metrô', type: 'metro', icon: Train, desc: 'Metrô-DF' },
                   { name: 'Caminhada', type: 'walk', icon: Footprints, desc: 'Trajeto a pé' },
+                  { name: 'Carro', type: 'car', icon: Car, desc: 'Navegação 3D' },
+                  { name: 'Moto', type: 'moto', icon: Bike, desc: 'Estilo Waze' },
                 ].map((m) => (
                   <motion.button key={m.type} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
                     onClick={() => setSelectedMode(m.type)}

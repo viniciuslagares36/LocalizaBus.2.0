@@ -1,39 +1,22 @@
-# Alterações feitas nesta correção
+# Alterações feitas nesta versão
 
-## Objetivo
-Correção em cima do ZIP novo enviado, preservando a estética do site.
+- Mantida a estética visual principal do site.
+- Adicionadas as opções **Carro** e **Moto** ao lado de Ônibus, Metrô e Caminhada.
+- Criada rota direta por **TomTom Routing** para Caminhada, Carro e Moto.
+- O modal de navegação agora aceita os modos:
+  - `walk` / pedestre;
+  - `car` / carro;
+  - `motorcycle` / moto.
+- Ajustado o painel de navegação 3D para funcionar estilo Waze: mapa em perspectiva, câmera seguindo GPS, instrução superior, ETA/distância e botão de iniciar navegação.
+- Ajustado o botão “Abrir Maps” para abrir como caminhada ou direção conforme o modo selecionado.
+- Removido `package-lock.json` para evitar registry interno e erro de timeout no deploy da Vercel.
+- Removido fallback de chave TomTom hardcoded; configure `VITE_TOMTOM_API_KEY` na Vercel.
 
-## Arquivos revisados/corrigidos
+## Variáveis necessárias na Vercel
 
-### src/App.jsx
-- Mantive a alteração do dropdown por portal para evitar que as sugestões fiquem atrás do input/hero.
-- Removi a chave TomTom hardcoded diretamente do App.jsx.
-- Voltei o uso de `TOMTOM_API_KEY` centralizado em `src/config/apiKeys.js`.
-- Não alterei cores, layout, cards ou identidade visual.
-
-### api/semob-stops.js
-- Corrigido: o arquivo estava com código de front-end/serviço dentro da pasta `api`.
-- Restaurado como função serverless correta da Vercel.
-- Adicionado tratamento de método, CORS, timeout e cache.
-
-### api/semob-routes.js
-- Melhorado como função serverless.
-- Adicionado tratamento de método, CORS, timeout, cache e erros mais claros.
-
-### src/services/semobStops.js
-- Mantido como serviço do front-end.
-- Continua responsável por buscar/cachear paradas e pesquisar linhas SEMOB.
-
-### Segurança/configuração
-- Criado/restaurado `src/config/apiKeys.js`.
-- Criado/restaurado `.env.example`.
-- Removido uso inseguro de `rejectUnauthorized: false` do proxy DFTrans.
-- Adicionados headers de segurança no `vercel.json`.
-
-### Performance
-- Restaurado `manualChunks` no `vite.config.js` para dividir melhor o bundle.
-- Build final gerou chunks separados para React, mapas, ícones, motion e axios.
-
-## Validação
-- Comando executado: `npm run build`
-- Resultado: build concluído com sucesso.
+```env
+VITE_TOMTOM_API_KEY=SUA_CHAVE_TOMTOM
+VITE_ORS_API_KEY=SUA_CHAVE_OPENROUTESERVICE
+VITE_TRANSITLAND_API_KEY=SUA_CHAVE_TRANSITLAND
+VITE_DFTRANS_WORKER_URL=
+```

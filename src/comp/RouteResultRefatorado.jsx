@@ -5,7 +5,7 @@
 // Ajuste: badge ao vivo agora mostra minutos desde a última atualização do GPS
 import React, { useMemo, useCallback, useState, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bus, Train, Clock, MapPin, Footprints, ArrowRight, ExternalLink } from 'lucide-react';
+import { Bus, Train, Clock, MapPin, Footprints, ArrowRight, ExternalLink, Car, Bike } from 'lucide-react';
 import WalkingMapModal from './WalkingMapModal';
 import LeafletMap from './LeafletMap';
 import { calcularDistancia, calcularTempoCaminhada, identificarBacia } from '../config/busConfig';
@@ -48,7 +48,10 @@ const getLineBadgeStyle = (route) => {
 };
 
 const LineNumberBadge = memo(({ route }) => {
-  if (route.isWalk) {
+  if (route.isNavigationRoute) {
+    const isMoto = route.navigationMode === 'motorcycle' || route.mode === 'MOTO';
+    const label = route.isWalk ? 'A pé' : isMoto ? 'Moto' : 'Carro';
+
     return (
       <span
         className="text-[10px] font-extrabold px-2 py-1 rounded-lg"
@@ -58,7 +61,7 @@ const LineNumberBadge = memo(({ route }) => {
           border: '1px solid rgba(0,243,255,0.28)',
         }}
       >
-        A pé
+        {label}
       </span>
     );
   }
@@ -191,20 +194,22 @@ const LiveGpsBadge = memo(({ route }) => {
 });
 
 // ─── Utilitário: deep link para app nativo de GPS ────────────────────────────
-const openNativeNav = (destName, destLat, destLon) => {
+const openNativeNav = (destName, destLat, destLon, mode = 'walk') => {
   const label = encodeURIComponent(destName || 'Destino');
   const coords = destLat && destLon ? `${destLat},${destLon}` : null;
+  const externalTravelMode = mode === 'car' || mode === 'motorcycle' ? 'driving' : 'walking';
+  const appleDirFlag = mode === 'car' || mode === 'motorcycle' ? 'd' : 'w';
 
   const geoUri = coords
     ? `geo:${coords}?q=${coords}(${label})`
     : `geo:0,0?q=${label}`;
 
   const appleUri = coords
-    ? `maps://?daddr=${coords}&dirflg=w`
+    ? `maps://?daddr=${coords}&dirflg=${appleDirFlag}`
     : `maps://?q=${label}`;
 
   const gmapsUrl = coords
-    ? `https://www.google.com/maps/dir/?api=1&destination=${coords}&travelmode=walking`
+    ? `https://www.google.com/maps/dir/?api=1&destination=${coords}&travelmode=${externalTravelMode}`
     : `https://www.google.com/maps/search/?api=1&query=${label}`;
 
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -238,18 +243,19 @@ const SkeletonCard = memo(() => (
 // ─── Card de rota individual ─────────────────────────────────────────────────
 const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCount = 1 }) => {
   const cardClass = useMemo(() => {
-    if (route.isWalk) return 'border-cyan-300/50 bg-cyan-50/20 dark:border-cyan-800/40 dark:bg-cyan-900/10';
+    if (route.isNavigationRoute) return 'border-cyan-300/50 bg-cyan-50/20 dark:border-cyan-800/40 dark:bg-cyan-900/10';
     if (route.isLive) return 'border-green-300/60 bg-green-50/30 dark:border-green-800/50 dark:bg-green-900/10';
     return 'border-gray-200 dark:border-gray-700/70 bg-white dark:bg-gray-800/80 hover:shadow-md';
-  }, [route.isWalk, route.isLive]);
+  }, [route.isNavigationRoute, route.isLive]);
 
   const handleDeepLink = useCallback(() => {
     openNativeNav(
       route.toStop || route.destination,
       route.toLat || null,
-      route.toLon || null
+      route.toLon || null,
+      route.navigationMode || 'walk'
     );
-  }, [route.toStop, route.destination, route.toLat, route.toLon]);
+  }, [route.toStop, route.destination, route.toLat, route.toLon, route.navigationMode]);
 
   const handleWalkOpen = useCallback(() => onWalkOpen(route), [route, onWalkOpen]);
 
@@ -266,7 +272,7 @@ const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCou
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         {/* Lado esquerdo */}
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          {route.isWalk ? (
+          {route.isNavigationRoute ? (
             <div
               className="rounded-full p-2 flex-shrink-0"
               style={{
@@ -274,7 +280,13 @@ const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCou
                 border: '1px solid rgba(0,243,255,0.25)',
               }}
             >
-              <Footprints className="h-4 w-4 text-cyan-400" strokeWidth={1.5} />
+              {route.navigationMode === 'car' ? (
+                <Car className="h-4 w-4 text-cyan-400" strokeWidth={1.5} />
+              ) : route.navigationMode === 'motorcycle' ? (
+                <Bike className="h-4 w-4 text-cyan-400" strokeWidth={1.5} />
+              ) : (
+                <Footprints className="h-4 w-4 text-cyan-400" strokeWidth={1.5} />
+              )}
             </div>
           ) : route.bacia ? (
             <div
@@ -312,8 +324,12 @@ const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCou
 ) : null}
 
   <span className="font-semibold text-sm text-gray-900 dark:text-white tracking-tight">
-    {route.isWalk
-      ? 'Rota a pé'
+    {route.isNavigationRoute
+      ? route.navigationMode === 'car'
+        ? 'Rota de carro'
+        : route.navigationMode === 'motorcycle'
+          ? 'Rota de moto'
+          : 'Rota a pé'
       : route.bacia?.nome || 'Ônibus'}
   </span>
 </div>
@@ -345,7 +361,7 @@ const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCou
             </div>
 
             {/* Ponto de embarque / instrução */}
-            {route.isWalk ? (
+            {route.isNavigationRoute ? (
               <p className="text-[10px] text-gray-400 mt-1 truncate">
                 {route.instruction}
               </p>
@@ -367,7 +383,7 @@ const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCou
 
         {/* Lado direito */}
         <div className="flex items-center gap-2 self-start sm:self-center flex-wrap">
-          {route.isWalk ? (
+          {route.isNavigationRoute ? (
             <>
               <motion.button
                 whileHover={{ scale: 1.04 }}
@@ -381,7 +397,13 @@ const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCou
                   boxShadow: '0 0 12px rgba(0,243,255,0.15)',
                 }}
               >
-                <Footprints className="h-3 w-3" strokeWidth={1.5} />
+                {route.navigationMode === 'car' ? (
+                  <Car className="h-3 w-3" strokeWidth={1.5} />
+                ) : route.navigationMode === 'motorcycle' ? (
+                  <Bike className="h-3 w-3" strokeWidth={1.5} />
+                ) : (
+                  <Footprints className="h-3 w-3" strokeWidth={1.5} />
+                )}
                 Navegar
               </motion.button>
 
@@ -472,7 +494,7 @@ const processedRoutes = useMemo(() => {
 
   const mapped = routes
     .map(route => {
-      const bacia = identificarBacia(route.line, route.mode);
+      const bacia = route.isNavigationRoute ? null : identificarBacia(route.line, route.mode);
 
       let caminhadaInfo = null;
 
@@ -492,7 +514,7 @@ const processedRoutes = useMemo(() => {
 
       return {
         ...route,
-        bacia: route.isWalk ? null : bacia,
+        bacia,
         caminhadaInfo,
       };
     })
@@ -711,7 +733,9 @@ const liveMarkers = useMemo(
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1">
-              {processedRoutes[0]?.isWalk ? 'Rota a pé — TomTom' : 'Rotas SEMOB / DFTrans'}
+              {processedRoutes[0]?.isNavigationRoute
+                ? `${processedRoutes[0]?.line || 'Navegação'} — TomTom 3D`
+                : 'Rotas SEMOB / DFTrans'}
             </p>
 
             <div className="flex items-center gap-1.5 flex-wrap">

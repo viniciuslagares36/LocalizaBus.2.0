@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Footprints, Navigation, ArrowLeft, ArrowRight,
   ArrowUp, RotateCcw, Play, Square, MapPin, Maximize2, Minimize2,
-  Smartphone
+  Smartphone, Car, Bike
 } from 'lucide-react';
 import { TOMTOM_API_KEY } from '../config/apiKeys';
 
@@ -36,12 +36,18 @@ const isMobileDevice = () =>
   /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
 
 // ─── Deep Link para app nativo ────────────────────────────────────────────────
-const openNativeNavigation = (destLat, destLon, destName) => {
+const getExternalTravelMode = (mode) => {
+  if (mode === 'car' || mode === 'motorcycle') return { google: 'driving', apple: 'd' };
+  return { google: 'walking', apple: 'w' };
+};
+
+const openNativeNavigation = (destLat, destLon, destName, mode = 'walk') => {
   const label = encodeURIComponent(destName || 'Destino');
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const gmaps = `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLon}&travelmode=walking`;
+  const externalMode = getExternalTravelMode(mode);
+  const gmaps = `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLon}&travelmode=${externalMode.google}`;
   if (isIOS) {
-    const apple = `maps://?daddr=${destLat},${destLon}&dirflg=w`;
+    const apple = `maps://?daddr=${destLat},${destLon}&dirflg=${externalMode.apple}`;
     const iframe = document.createElement('iframe');
     iframe.style.display = 'none'; iframe.src = apple;
     document.body.appendChild(iframe);
@@ -93,16 +99,18 @@ const geocode = async (addr, signal) => {
   return { lat: p.lat, lon: p.lon };
 };
 
-const getRoute = async (o, d, signal) => {
+const getRoute = async (o, d, signal, mode = 'walk') => {
   // ✅ FIX CRÍTICO: Valida coords ANTES de chamar a API
   if (!isValidCoord(o.lat, o.lon))
     throw new Error(`Origem inválida (lat=${o.lat}, lon=${o.lon}). Verifique sua localização.`);
   if (!isValidCoord(d.lat, d.lon))
     throw new Error(`Destino inválido (lat=${d.lat}, lon=${d.lon}). Verifique o endereço.`);
 
+  const travelMode = mode === 'motorcycle' ? 'motorcycle' : mode === 'car' ? 'car' : 'pedestrian';
+  const routeType = travelMode === 'pedestrian' ? 'shortest' : 'fastest';
   const url =
     `https://api.tomtom.com/routing/1/calculateRoute/${o.lat},${o.lon}:${d.lat},${d.lon}/json` +
-    `?key=${KEY}&travelMode=pedestrian&routeType=shortest&instructionsType=tagged&language=pt-BR`;
+    `?key=${KEY}&travelMode=${travelMode}&routeType=${routeType}&traffic=true&instructionsType=tagged&language=pt-BR`;
 
   const r = await fetch(url, { signal });
   if (!r.ok) {
@@ -139,6 +147,9 @@ const ManIcon = ({ type, size = 10 }) => {
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 const WalkingMapModal = ({ route, userLocation, onClose }) => {
+  const navigationMode = route?.navigationMode || (route?.isWalk ? 'walk' : 'walk');
+  const isDrivingMode = navigationMode === 'car' || navigationMode === 'motorcycle';
+  const modeLabel = route?.isWalk ? 'caminhada' : navigationMode === 'motorcycle' ? 'moto' : 'carro';
   const wrapRef = useRef(null);
   const mapRef = useRef(null);
   const mapElRef = useRef(null);
@@ -321,7 +332,7 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
         const o = origRef.current, d = destRef.current;
         if (!o || !d) throw new Error('Coordenadas não disponíveis.');
 
-        const data = await getRoute(o, d, abort.signal);
+        const data = await getRoute(o, d, abort.signal, navigationMode);
         if (!mountedRef.current) return;
 
         rdRef.current = data;
@@ -390,11 +401,11 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
           background:linear-gradient(135deg,#00f3ff,#0051cc);
           border:3px solid #fff;box-shadow:0 4px 18px rgba(0,243,255,0.65);
           transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;">
-          <span style="transform:rotate(45deg);font-size:18px;">${route.isWalk ? '🏁' : '🚌'}</span>
+          <span style="transform:rotate(45deg);font-size:18px;">${route.isWalk ? '🏁' : navigationMode === 'motorcycle' ? '🏍️' : '🚗'}</span>
         </div>
       </div>`;
     new window.tt.Marker({ element: el, anchor: 'bottom' }).setLngLat([d.lon, d.lat]).addTo(m);
-  }, [route.isWalk]);
+  }, [route.isWalk, navigationMode]);
 
   const addUserPin = useCallback((m, pos) => {
     if (!window.tt || markerRef.current) return;
@@ -497,7 +508,8 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
 
   // Cálculos ──────────────────────────────────────────────────────────────────
   const pct = rd ? Math.min(100, (covered / rd.totalM) * 100) : 0;
-  const eta = remain != null ? Math.round((remain / 1000) / 4.8 * 3600) : rd?.totalS ?? null;
+  const averageKmh = navigationMode === 'motorcycle' ? 38 : navigationMode === 'car' ? 32 : 4.8;
+  const eta = remain != null ? Math.round((remain / 1000) / averageKmh * 3600) : rd?.totalS ?? null;
   const destName = destRef.current?.name || route.fromStop || route.destination || 'Destino';
   const destCoords = destRef.current;
 
@@ -534,14 +546,20 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
                 position: 'absolute', inset: 8, borderRadius: '50%',
                 background: 'rgba(0,243,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center'
               }}>
+                {navigationMode === 'car' ? (
+                <Car style={{ color: C, width: 22, height: 22 }} />
+              ) : navigationMode === 'motorcycle' ? (
+                <Bike style={{ color: C, width: 22, height: 22 }} />
+              ) : (
                 <Footprints style={{ color: C, width: 22, height: 22 }} />
+              )}
               </div>
             </div>
             <p style={{
               color: C, fontSize: 13, fontWeight: 700, letterSpacing: 1,
               textShadow: `0 0 12px rgba(0,243,255,0.6)`
             }}>{loadMsg}</p>
-            <p style={{ color: 'rgba(255,255,255,0.2)', fontSize: 11 }}>TomTom SDK · Brasília 3D</p>
+            <p style={{ color: 'rgba(255,255,255,0.2)', fontSize: 11 }}>TomTom SDK · Navegação {modeLabel} 3D</p>
             <style>{`@keyframes spinNeon{to{transform:rotate(360deg)}}`}</style>
           </div>
         )}
@@ -681,7 +699,7 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
                 color: C, fontSize: 22, fontWeight: 900, margin: 0,
                 textShadow: `0 0 16px rgba(0,243,255,0.7)`
               }}>
-                {route.isWalk ? 'Chegou!' : 'No ponto!'}
+                {route.isWalk ? 'Chegou!' : 'Destino alcançado!'}
               </p>
               <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, marginTop: 6 }}>
                 {dist(rd?.totalM || 0)} · {mins(elapsed)}
@@ -815,7 +833,7 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
                 {/* ✅ Mobile: Deep Link nativo */}
                 {isMobile && destCoords && (
                   <motion.button whileTap={{ scale: 0.96 }}
-                    onClick={() => openNativeNavigation(destCoords.lat, destCoords.lon, destName)}
+                    onClick={() => openNativeNavigation(destCoords.lat, destCoords.lon, destName, navigationMode)}
                     style={{
                       width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                       gap: 10, padding: '14px 20px', cursor: 'pointer', border: 'none',
@@ -836,7 +854,7 @@ const WalkingMapModal = ({ route, userLocation, onClose }) => {
                     boxShadow: rd ? `0 0 28px rgba(0,243,255,0.4),0 6px 20px rgba(0,0,0,0.3)` : 'none'
                   }}>
                   <Navigation style={{ width: 20, height: 20 }} strokeWidth={2.5} />
-                  {isMobile ? 'Navegar no mapa' : 'Iniciar navegação 3D'}
+                  {isMobile ? 'Navegar no mapa' : `Iniciar navegação ${isDrivingMode ? 'Waze 3D' : '3D'}`}
                 </motion.button>
               </div>
             ) : tracking ? (
