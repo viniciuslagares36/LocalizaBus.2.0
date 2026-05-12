@@ -44,6 +44,19 @@ function normalizeLine(line) {
     .toUpperCase();
 }
 
+function normalizeLineComparable(line) {
+  return normalizeLine(line)
+    .replace(/^0+(?=\d)/, '')
+    .trim();
+}
+
+function sameBusLine(a, b) {
+  const x = normalizeLineComparable(a);
+  const y = normalizeLineComparable(b);
+
+  return !!x && !!y && (x === y || x.endsWith(y) || y.endsWith(x));
+}
+
 function normalizeVehicle(vehicle, fallbackOperadora = null) {
   const lat =
     vehicle?.lat ??
@@ -229,7 +242,7 @@ export async function getLiveVehiclesByLine(line) {
   const vehicles = await getAllLiveVehicles();
 
   return vehicles.filter((vehicle) => {
-    return normalizeLine(vehicle.linha || vehicle.line) === normalizedLine;
+    return sameBusLine(vehicle.linha || vehicle.line, normalizedLine);
   });
 }
 
