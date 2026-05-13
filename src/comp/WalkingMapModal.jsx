@@ -415,19 +415,43 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
       m.addSource('wr', { type: 'geojson', data: data.geo });
       // Linha limpa: sombra discreta + rota azul, sem neon pesado.
       m.addLayer({
-        id: 'wr-shadow', type: 'line', source: 'wr',
+        id: 'wr-shadow',
+        type: 'line',
+        source: 'wr',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': isDark ? '#020617' : '#ffffff', 'line-width': 14, 'line-opacity': 0.88 }
+        paint: {
+          // borda externa mais suave, sem aquele preto pesado
+          'line-color': isDark ? 'rgba(0, 213, 255, 0.22)' : 'rgba(37, 99, 235, 0.22)',
+          'line-width': 16,
+          'line-opacity': 1,
+          'line-blur': 2
+        }
       });
+
       m.addLayer({
-        id: 'wr-fill', type: 'line', source: 'wr',
+        id: 'wr-fill',
+        type: 'line',
+        source: 'wr',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': isDrivingMode ? '#2563eb' : '#06b6d4', 'line-width': 8, 'line-opacity': 1 }
+        paint: {
+          // linha principal da rota
+          'line-color': '#00d5ff',
+          'line-width': 9,
+          'line-opacity': 1
+        }
       });
+
       m.addLayer({
-        id: 'wr-soft-highlight', type: 'line', source: 'wr',
+        id: 'wr-soft-highlight',
+        type: 'line',
+        source: 'wr',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#dbeafe', 'line-width': 2, 'line-opacity': 0.65 }
+        paint: {
+          // brilho central estilo app premium
+          'line-color': '#e0fbff',
+          'line-width': 2.5,
+          'line-opacity': 0.85
+        }
       });
     });
   }, [isDrivingMode, isDark]);
@@ -550,90 +574,90 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
       .addTo(m);
   }, []);
 
-// Instrução ─────────────────────────────────────────────────────────────────
-const updateInstr = useCallback((distM) => {
-  const data = rdRef.current;
+  // Instrução ─────────────────────────────────────────────────────────────────
+  const updateInstr = useCallback((distM) => {
+    const data = rdRef.current;
 
-  if (!data?.instrs?.length) return;
+    if (!data?.instrs?.length) return;
 
-  let idx = 0;
+    let idx = 0;
 
-  for (let i = 0; i < data.instrs.length; i++) {
-    if (data.instrs[i].off <= distM) {
-      idx = i;
-    } else {
-      break;
-    }
-  }
-
-  setCurI(data.instrs[idx]);
-  setNextI(data.instrs[idx + 1] || null);
-}, []);
-  // GPS ───────────────────────────────────────────────────────────────────────
-const onGPS = useCallback(pos => {
-  const { latitude: la, longitude: lo, accuracy: ac } = pos.coords;
-
-  setAcc(Math.round(ac));
-
-  let b = brng;
-  if (lastRef.current) {
-    b = bear(lastRef.current.lat, lastRef.current.lon, la, lo);
-  }
-
-  lastRef.current = { lat: la, lon: lo };
-  setBrng(b);
-
-  const m = mapRef.current;
-
-  if (m) {
-    if (markerRef.current) {
-      markerRef.current.setLngLat([lo, la]);
-
-      const markerEl = markerRef.current.getElement();
-      const arrowBody = markerEl.querySelector(".nav-arrow-body");
-
-      if (arrowBody) {
-        arrowBody.style.transform = `rotate(${b}deg)`;
+    for (let i = 0; i < data.instrs.length; i++) {
+      if (data.instrs[i].off <= distM) {
+        idx = i;
+      } else {
+        break;
       }
-    } else {
-      addUserPin(m, { lat: la, lon: lo });
     }
 
-    if (!overview) {
-      m.easeTo({
-        center: [lo, la],
-        zoom: 18.4,
-        pitch: 56,
-        bearing: b,
-        padding: { top: 80, bottom: 260, left: 0, right: 0 },
-        duration: 650,
-        easing: t => t
-      });
+    setCurI(data.instrs[idx]);
+    setNextI(data.instrs[idx + 1] || null);
+  }, []);
+  // GPS ───────────────────────────────────────────────────────────────────────
+  const onGPS = useCallback(pos => {
+    const { latitude: la, longitude: lo, accuracy: ac } = pos.coords;
+
+    setAcc(Math.round(ac));
+
+    let b = brng;
+    if (lastRef.current) {
+      b = bear(lastRef.current.lat, lastRef.current.lon, la, lo);
     }
 
+    lastRef.current = { lat: la, lon: lo };
+    setBrng(b);
+
+    const m = mapRef.current;
+
+    if (m) {
+      if (markerRef.current) {
+        markerRef.current.setLngLat([lo, la]);
+
+        const markerEl = markerRef.current.getElement();
+        const arrowBody = markerEl.querySelector(".nav-arrow-body");
+
+        if (arrowBody) {
+          arrowBody.style.transform = `rotate(${b}deg)`;
+        }
+      } else {
+        addUserPin(m, { lat: la, lon: lo });
+      }
+
+      if (!overview) {
+        m.easeTo({
+          center: [lo, la],
+          zoom: 18.4,
+          pitch: 56,
+          bearing: b,
+          padding: { top: 80, bottom: 260, left: 0, right: 0 },
+          duration: 650,
+          easing: t => t
+        });
+      }
+
+      const rd2 = rdRef.current;
+      if (rd2 && m.getSource('wr')) {
+        drawRoute(m, rd2);
+      }
+    }
+
+    const o = origRef.current;
+    const de = destRef.current;
     const rd2 = rdRef.current;
-    if (rd2 && m.getSource('wr')) {
-      drawRoute(m, rd2);
+
+    if (rd2 && o) {
+      const cov = Math.min(hav(o.lat, o.lon, la, lo), rd2.totalM);
+      const rem = Math.max(0, rd2.totalM - cov);
+
+      setCovered(cov);
+      setRemain(rem);
+      updateInstr(cov);
+
+      if (de && hav(la, lo, de.lat, de.lon) < 25) {
+        setArrived(true);
+      }
     }
-  }
-
-  const o = origRef.current;
-  const de = destRef.current;
-  const rd2 = rdRef.current;
-
-  if (rd2 && o) {
-    const cov = Math.min(hav(o.lat, o.lon, la, lo), rd2.totalM);
-    const rem = Math.max(0, rd2.totalM - cov);
-
-    setCovered(cov);
-    setRemain(rem);
-    updateInstr(cov);
-
-    if (de && hav(la, lo, de.lat, de.lon) < 25) {
-      setArrived(true);
-    }
-  }
-}, [overview, updateInstr, addUserPin, drawRoute, brng]);
+  }, [overview, updateInstr, addUserPin, drawRoute, brng]);
 
   // Start/Stop ────────────────────────────────────────────────────────────────
   const startNav = useCallback(async () => {
@@ -760,10 +784,10 @@ const onGPS = useCallback(pos => {
   return (
     <div ref={wrapRef} style={{ position: 'fixed', inset: 0, zIndex: 2147483647, background: wrapperBg, display: 'flex', flexDirection: 'column' }}>
 
-      
+
       <div ref={mapElRef} style={{ flex: 1, width: '100%', position: 'relative', minHeight: 0 }}>
 
-        
+
         {loading && (
           <div style={{
             position: 'absolute', inset: 0, zIndex: 10, display: 'flex', flexDirection: 'column',
@@ -801,7 +825,7 @@ const onGPS = useCallback(pos => {
           </div>
         )}
 
-        
+
         {err && !loading && (
           <div style={{
             position: 'absolute', inset: 0, zIndex: 10, display: 'flex', flexDirection: 'column',
@@ -941,7 +965,7 @@ const onGPS = useCallback(pos => {
           )}
         </AnimatePresence>
 
-        
+
         <motion.button whileTap={{ scale: 0.88 }} onClick={nav ? stopNav : onClose}
           style={{
             position: 'absolute', top: 'max(env(safe-area-inset-top,0px),14px)', left: 14,
@@ -979,7 +1003,7 @@ const onGPS = useCallback(pos => {
           {fs ? <Minimize2 style={{ width: 16, height: 16 }} /> : <Maximize2 style={{ width: 16, height: 16 }} />}
         </motion.button>
 
-        
+
         {tracking && acc != null && (
           <div style={{
             position: 'absolute', bottom: nav ? 16 : 200, left: 14, zIndex: 20,
@@ -994,7 +1018,7 @@ const onGPS = useCallback(pos => {
           </div>
         )}
 
-        
+
         <AnimatePresence>
           {arrived && (
             <motion.div key="arrived"
