@@ -552,71 +552,71 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
   }, []);
 
   // GPS ───────────────────────────────────────────────────────────────────────
-  const onGPS = useCallback(pos => {
-    const { latitude: la, longitude: lo, accuracy: ac } = pos.coords;
+  // GPS ───────────────────────────────────────────────────────────────────────
+const onGPS = useCallback(pos => {
+  const { latitude: la, longitude: lo, accuracy: ac } = pos.coords;
 
-    setAcc(Math.round(ac));
+  setAcc(Math.round(ac));
 
-    let b = brng;
-    if (lastRef.current) {
-      b = bear(lastRef.current.lat, lastRef.current.lon, la, lo);
+  let b = brng;
+  if (lastRef.current) {
+    b = bear(lastRef.current.lat, lastRef.current.lon, la, lo);
+  }
+
+  lastRef.current = { lat: la, lon: lo };
+  setBrng(b);
+
+  const m = mapRef.current;
+
+  if (m) {
+    if (markerRef.current) {
+      markerRef.current.setLngLat([lo, la]);
+
+      const markerEl = markerRef.current.getElement();
+      const arrowBody = markerEl.querySelector(".nav-arrow-body");
+
+      if (arrowBody) {
+        arrowBody.style.transform = `rotate(${b}deg)`;
+      }
+    } else {
+      addUserPin(m, { lat: la, lon: lo });
     }
 
-    lastRef.current = { lat: la, lon: lo };
-    setBrng(b);
-
-    const m = mapRef.current;
-
-    if (m) {
-      if (markerRef.current) {
-        markerRef.current.setLngLat([lo, la]);
-
-        const markerEl = markerRef.current.getElement();
-        const arrowBody = markerEl.querySelector(".nav-arrow-body");
-
-        if (arrowBody) {
-          arrowBody.style.transform = `rotate(${b}deg)`;
-        }
-      } else {
-        addUserPin(m, { lat: la, lon: lo });
-      }
-
-      // Câmera mais próxima e menos aérea, mantendo o usuário mais para baixo da tela.
-      if (!overview) {
-        m.easeTo({
-          center: [lo, la],
-          zoom: 18.4,
-          pitch: 56,
-          bearing: b,
-          padding: { top: 80, bottom: 260, left: 0, right: 0 },
-          duration: 650,
-          easing: t => t
-        });
-      }
-
-      const rd2 = rdRef.current;
-      if (rd2 && m.getSource('wr')) {
-        drawRoute(m, rd2);
-      }
+    if (!overview) {
+      m.easeTo({
+        center: [lo, la],
+        zoom: 18.4,
+        pitch: 56,
+        bearing: b,
+        padding: { top: 80, bottom: 260, left: 0, right: 0 },
+        duration: 650,
+        easing: t => t
+      });
     }
 
-    const o = origRef.current;
-    const de = destRef.current;
     const rd2 = rdRef.current;
-
-    if (rd2 && o) {
-      const cov = Math.min(hav(o.lat, o.lon, la, lo), rd2.totalM);
-      const rem = Math.max(0, rd2.totalM - cov);
-
-      setCovered(cov);
-      setRemain(rem);
-      updateInstr(cov);
-
-      if (de && hav(la, lo, de.lat, de.lon) < 25) {
-        setArrived(true);
-      }
+    if (rd2 && m.getSource('wr')) {
+      drawRoute(m, rd2);
     }
-  }, [overview, updateInstr, addUserPin, drawRoute, brng]);
+  }
+
+  const o = origRef.current;
+  const de = destRef.current;
+  const rd2 = rdRef.current;
+
+  if (rd2 && o) {
+    const cov = Math.min(hav(o.lat, o.lon, la, lo), rd2.totalM);
+    const rem = Math.max(0, rd2.totalM - cov);
+
+    setCovered(cov);
+    setRemain(rem);
+    updateInstr(cov);
+
+    if (de && hav(la, lo, de.lat, de.lon) < 25) {
+      setArrived(true);
+    }
+  }
+}, [overview, updateInstr, addUserPin, drawRoute, brng]);
 
   // Start/Stop ────────────────────────────────────────────────────────────────
   const startNav = useCallback(async () => {
