@@ -66,11 +66,14 @@ const getIsDarkMode = (isDarkProp) => {
 };
 
 // ─── Estilo Mapbox conforme dark/light ───────────────────────────────────────
-const getMapboxStyle = (isDark) => (
-  isDark
-    ? "mapbox://styles/mapbox/navigation-night-v1"
-    : "mapbox://styles/mapbox/navigation-day-v1"
-);
+const getMapboxStyle = (isDark) => {
+  return (
+    import.meta.env.VITE_MAPBOX_STYLE_URL ||
+    (isDark
+      ? "mapbox://styles/mapbox/navigation-night-v1"
+      : "mapbox://styles/mapbox/navigation-day-v1")
+  );
+};
 
 // ─── Detecta mobile ───────────────────────────────────────────────────────────
 const isMobileDevice = () =>
