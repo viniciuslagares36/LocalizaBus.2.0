@@ -645,10 +645,6 @@ const onGPS = useCallback(pos => {
 
     setErr(null);
 
-    if (!document.fullscreenElement && wrapRef.current) {
-      try { await wrapRef.current.requestFullscreen(); setFs(true); } catch (_) { }
-    }
-
     setNav(true);
     setTracking(true);
     setOverview(false);
@@ -985,126 +981,213 @@ const onGPS = useCallback(pos => {
         )}
       </div>
 
-      {/* ─── PAINEL INFERIOR CLEAN ───────────────────────────────────── */}
+      {/* ─── PAINEL INFERIOR PREMIUM ───────────────────────────────────── */}
       <div style={{
-        background: panelBg,
-        borderTop: panelBorder,
+        background: isDark
+          ? 'linear-gradient(180deg, rgba(5,8,16,0.94), rgba(3,7,18,0.98))'
+          : 'rgba(255,255,255,0.96)',
+        borderTop: isDark
+          ? '1px solid rgba(0,213,255,0.14)'
+          : '1px solid rgba(0,0,0,0.08)',
         flexShrink: 0,
-        backdropFilter: 'blur(18px)',
-        transition: 'max-height 0.25s ease, opacity 0.25s ease',
-        maxHeight: nav && !bottomOpen ? 0 : 260,
-        opacity: nav && !bottomOpen ? 0 : 1,
-        overflow: 'hidden'
+        backdropFilter: 'blur(20px)',
+        boxShadow: isDark
+          ? '0 -18px 40px rgba(0,0,0,0.45)'
+          : '0 -14px 32px rgba(15,23,42,0.10)',
+        padding: '14px 16px 16px',
       }}>
-        {nav && (
-          <button onClick={() => setBottomOpen(v => !v)}
-            style={{
-              width: '100%', display: 'flex', justifyContent: 'center', padding: '8px 0 4px',
-              background: 'transparent', border: 'none', cursor: 'pointer'
-            }}>
-            <div style={{ width: 38, height: 4, borderRadius: 99, background: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.14)' }} />
-          </button>
-        )}
-
-        <div style={{ padding: nav ? '8px 18px 18px' : '14px 18px 18px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-            <div style={{
-              width: 38, height: 38, borderRadius: 14,
-              background: isDark ? 'rgba(0,213,255,0.08)' : '#eff6ff',
-              border: isDark ? '1px solid rgba(0,213,255,0.18)' : '1px solid rgba(37,99,235,0.14)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-            }}>
-              <MapPin style={{ color: routeBlue, width: 18, height: 18 }} strokeWidth={2.4} />
-            </div>
-
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{
-                color: panelLabelColor, fontSize: 10, fontWeight: 800,
-                textTransform: 'uppercase', letterSpacing: 1.1, margin: 0
-              }}>Destino</p>
-              <p style={{
-                color: panelText, fontSize: 14, fontWeight: 800, margin: '2px 0 0',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-              }}>{destName}</p>
-            </div>
-
-            <div style={{ textAlign: 'right', flexShrink: 0 }}>
-              <p style={{ color: routeBlue, fontSize: 22, fontWeight: 900, margin: 0, lineHeight: 1 }}>
-                {remain != null ? dist(remain) : '—'}
-              </p>
-              <p style={{ color: panelSubText, fontSize: 11, margin: '3px 0 0', fontWeight: 700 }}>
-                {eta != null ? mins(eta) : '—'}
-              </p>
-            </div>
+        {/* Linha destino + distância */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          paddingBottom: 12,
+          borderBottom: isDark
+            ? '1px solid rgba(0,213,255,0.10)'
+            : '1px solid rgba(15,23,42,0.08)',
+        }}>
+          <div style={{
+            width: 38,
+            height: 38,
+            borderRadius: 14,
+            background: isDark ? 'rgba(0,213,255,0.08)' : '#eff6ff',
+            border: isDark
+              ? '1px solid rgba(0,213,255,0.22)'
+              : '1px solid rgba(37,99,235,0.16)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            boxShadow: isDark ? '0 0 18px rgba(0,213,255,0.08)' : 'none',
+          }}>
+            <MapPin style={{ color: routeBlue, width: 18, height: 18 }} strokeWidth={2.4} />
           </div>
 
-          <div style={{ height: 5, borderRadius: 99, background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)', overflow: 'hidden', marginBottom: 12 }}>
-            <motion.div animate={{ width: `${pct}%` }} transition={{ duration: 0.55 }}
-              style={{ height: '100%', borderRadius: 99, background: routeBlue }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{
+              color: isDark ? '#00d5ff' : '#2563eb',
+              fontSize: 10,
+              fontWeight: 900,
+              textTransform: 'uppercase',
+              letterSpacing: 1.4,
+              margin: 0,
+            }}>
+              Destino
+            </p>
+
+            <p style={{
+              color: isDark ? '#ffffff' : '#0f172a',
+              fontSize: 15,
+              fontWeight: 850,
+              margin: '3px 0 0',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}>
+              {destName}
+            </p>
           </div>
 
-          <div style={{ display: 'flex', gap: 10 }}>
-            {!nav ? (
-              <>
-                {isMobile && destCoords && (
-                  <motion.button whileTap={{ scale: 0.96 }}
-                    onClick={() => openNativeNavigation(destCoords.lat, destCoords.lon, destName, navigationMode)}
-                    style={{
-                      width: 58, height: 54, borderRadius: 18, flexShrink: 0,
-                      background: isDark ? 'rgba(255,255,255,0.06)' : '#f8fafc',
-                      border: isDark ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(0,0,0,0.08)',
-                      color: routeBlue, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
-                    }} title="Abrir no Maps">
-                    <Smartphone style={{ width: 20, height: 20 }} />
-                  </motion.button>
-                )}
-                <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.97 }}
-                  onClick={startNav} disabled={!rd}
-                  style={{
-                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    gap: 10, padding: '15px 18px', cursor: rd ? 'pointer' : 'not-allowed', border: 'none',
-                    ...neon, opacity: rd ? 1 : 0.4, fontSize: 15
-                  }}>
-                  <Navigation style={{ width: 19, height: 19 }} strokeWidth={2.6} />
-                  Iniciar navegação
-                </motion.button>
-              </>
-            ) : tracking ? (
-              <motion.button whileTap={{ scale: 0.97 }} onClick={pauseNav}
+          <div style={{
+            textAlign: 'right',
+            flexShrink: 0,
+            minWidth: 82,
+          }}>
+            <p style={{
+              color: routeBlue,
+              fontSize: 24,
+              fontWeight: 950,
+              margin: 0,
+              lineHeight: 1,
+              letterSpacing: -0.5,
+              textShadow: isDark ? '0 0 14px rgba(37,99,235,0.28)' : 'none',
+            }}>
+              {remain != null ? dist(remain) : '—'}
+            </p>
+
+            <p style={{
+              color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(15,23,42,0.55)',
+              fontSize: 11,
+              margin: '4px 0 0',
+              fontWeight: 700,
+            }}>
+              {eta != null ? mins(eta) : '—'}
+            </p>
+          </div>
+        </div>
+
+        {/* Botão principal */}
+        <div style={{ marginTop: 12 }}>
+          {!nav ? (
+            <motion.button
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={startNav}
+              disabled={!rd}
+              style={{
+                width: '100%',
+                height: 54,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 10,
+                borderRadius: 16,
+                border: isDark
+                  ? '1px solid rgba(0,213,255,0.28)'
+                  : '1px solid rgba(37,99,235,0.18)',
+                background: isDark
+                  ? 'linear-gradient(135deg, rgba(0,213,255,0.10), rgba(37,99,235,0.26))'
+                  : 'linear-gradient(135deg, #eff6ff, #dbeafe)',
+                color: isDark ? '#e0fbff' : '#1d4ed8',
+                fontSize: 15,
+                fontWeight: 900,
+                cursor: rd ? 'pointer' : 'not-allowed',
+                opacity: rd ? 1 : 0.45,
+                boxShadow: isDark
+                  ? '0 0 26px rgba(0,213,255,0.10), inset 0 0 0 1px rgba(255,255,255,0.03)'
+                  : '0 10px 22px rgba(37,99,235,0.12)',
+              }}
+            >
+              <Navigation style={{ width: 19, height: 19 }} strokeWidth={2.7} />
+              Iniciar navegação
+            </motion.button>
+          ) : tracking ? (
+            <div style={{ display: 'flex', gap: 10 }}>
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                onClick={pauseNav}
                 style={{
-                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  gap: 8, padding: '14px 18px', borderRadius: 18,
+                  flex: 1,
+                  height: 54,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  borderRadius: 16,
                   background: isDark ? 'rgba(239,68,68,0.12)' : '#fef2f2',
-                  color: '#ef4444', fontWeight: 900, fontSize: 15,
-                  border: isDark ? '1px solid rgba(239,68,68,0.25)' : '1px solid rgba(239,68,68,0.16)', cursor: 'pointer'
-                }}>
+                  color: '#ef4444',
+                  fontWeight: 900,
+                  fontSize: 15,
+                  border: isDark
+                    ? '1px solid rgba(239,68,68,0.25)'
+                    : '1px solid rgba(239,68,68,0.16)',
+                  cursor: 'pointer',
+                }}
+              >
                 <Square style={{ width: 16, height: 16 }} fill="currentColor" />
                 Pausar
               </motion.button>
-            ) : (
-              <motion.button whileTap={{ scale: 0.97 }} onClick={startNav}
-                style={{
-                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  gap: 8, padding: '14px 18px', cursor: 'pointer', border: 'none', ...neon, fontSize: 15
-                }}>
-                <Play style={{ width: 16, height: 16 }} fill="currentColor" />
-                Retomar
-              </motion.button>
-            )}
 
-            {nav && (
-              <motion.button whileTap={{ scale: 0.92 }} onClick={stopNav}
+              <motion.button
+                whileTap={{ scale: 0.92 }}
+                onClick={stopNav}
                 style={{
-                  width: 54, height: 54, borderRadius: 18, flexShrink: 0,
+                  width: 54,
+                  height: 54,
+                  borderRadius: 16,
                   background: isDark ? 'rgba(255,255,255,0.06)' : '#f8fafc',
-                  border: isDark ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(0,0,0,0.08)',
-                  color: isDark ? 'rgba(255,255,255,0.72)' : '#374151',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
-                }} title="Encerrar navegação">
+                  border: isDark
+                    ? '1px solid rgba(255,255,255,0.10)'
+                    : '1px solid rgba(0,0,0,0.08)',
+                  color: isDark ? 'rgba(255,255,255,0.75)' : '#374151',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                }}
+                title="Encerrar navegação"
+              >
                 <RotateCcw style={{ width: 18, height: 18 }} />
               </motion.button>
-            )}
-          </div>
+            </div>
+          ) : (
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              onClick={startNav}
+              style={{
+                width: '100%',
+                height: 54,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                borderRadius: 16,
+                border: isDark
+                  ? '1px solid rgba(0,213,255,0.28)'
+                  : '1px solid rgba(37,99,235,0.18)',
+                background: isDark
+                  ? 'linear-gradient(135deg, rgba(0,213,255,0.10), rgba(37,99,235,0.26))'
+                  : 'linear-gradient(135deg, #eff6ff, #dbeafe)',
+                color: isDark ? '#e0fbff' : '#1d4ed8',
+                fontSize: 15,
+                fontWeight: 900,
+                cursor: 'pointer',
+              }}
+            >
+              <Play style={{ width: 16, height: 16 }} fill="currentColor" />
+              Retomar navegação
+            </motion.button>
+          )}
         </div>
       </div>
     </div>
