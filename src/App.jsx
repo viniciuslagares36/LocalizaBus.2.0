@@ -158,9 +158,11 @@ class ErrorBoundary extends Component {
 const spring = { type: 'spring', stiffness: 120, damping: 22 };
 
 const carouselImages = [
-  { src: 'https://images.unsplash.com/photo-1619546952812-520e98064a52?auto=format&fit=crop&w=1400&q=55', title: 'Brasília' },
-  { src: 'https://images.unsplash.com/photo-1596495578065-6e0763fa1178?auto=format&fit=crop&w=1400&q=55', title: 'Mobilidade urbana' },
-  { src: 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=1400&q=55', title: 'Cidade à noite' },
+  { src: '/carousel/brasilia-congresso.webp', title: 'Brasília em movimento' },
+  { src: '/carousel/brasilia-ponte-jk.webp', title: 'Ponte JK' },
+  { src: '/carousel/brasilia-catedral.webp', title: 'Catedral de Brasília' },
+  { src: '/carousel/brasilia-torre-tv.webp', title: 'Torre de TV' },
+  { src: '/carousel/brasilia-rodoviaria.webp', title: 'Rodoviária do Plano Piloto' },
 ];
 
 const isMobileLikeDevice = () => {
