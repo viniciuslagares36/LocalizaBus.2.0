@@ -11,7 +11,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Footprints, Navigation, ArrowLeft, ArrowRight,
   ArrowUp, RotateCcw, Play, Square, MapPin, Maximize2, Minimize2,
-  Smartphone, Car, Bike
+  Smartphone, Car, Bike, Volume2, VolumeX, ChevronDown, ChevronUp, CheckCircle2
 } from 'lucide-react';
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -36,6 +36,24 @@ const bear = (a, b, c, d) => {
 const dist = m => m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
 const mins = s => { if (s < 60) return `${s}s`; const m = Math.floor(s / 60), r = s % 60; return r ? `${m}min ${r}s` : `${m} min`; };
 const clockTime = (d = new Date()) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+const pickBestPtBrVoice = () => {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
+  const voices = window.speechSynthesis.getVoices?.() || [];
+  if (!voices.length) return null;
+  const ptVoices = voices.filter(v => String(v.lang || '').toLowerCase().startsWith('pt'));
+  const preferred = ptVoices.find(v => /google|microsoft|natural|online|francisca|maria|luciana|daniel/i.test(v.name));
+  return preferred || ptVoices.find(v => String(v.lang || '').toLowerCase() === 'pt-br') || ptVoices[0] || null;
+};
+
+const makeSpeechText = (current, next) => {
+  const normalize = (txt = '') => String(txt)
+    .replace(/DF/gi, 'D F')
+    .replace(/EP[A-Z]?/gi, match => match.split('').join(' '))
+    .replace(/\s+/g, ' ')
+    .trim();
+  return next ? `${normalize(current)}. Em seguida, ${normalize(next)}.` : normalize(current);
+};
 
 // ─── Strip HTML tags das instruções (remove <street>, </street>, <b>, etc.) ───
 const stripHtmlTags = (str) => {
@@ -672,7 +690,7 @@ const onGPS = useCallback(pos => {
     if (!nav || !tracking || voiceMuted || !curI?.msg) return;
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
 
-    const text = nextI ? `${curI.msg}. Depois: ${nextI.msg}` : curI.msg;
+    const text = makeSpeechText(curI.msg, nextI?.msg);
     if (lastSpokenRef.current === text) return;
 
     lastSpokenRef.current = text;
@@ -680,9 +698,12 @@ const onGPS = useCallback(pos => {
 
     const utterance = new window.SpeechSynthesisUtterance(text);
     utterance.lang = 'pt-BR';
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    utterance.volume = 1;
+    const selectedVoice = pickBestPtBrVoice();
+    if (selectedVoice) utterance.voice = selectedVoice;
+    // Mais natural: fala um pouco mais devagar e com pitch levemente maior.
+    utterance.rate = 0.88;
+    utterance.pitch = 1.04;
+    utterance.volume = 0.92;
 
     window.speechSynthesis.speak(utterance);
   }, [nav, tracking, voiceMuted, curI, nextI]);
@@ -827,7 +848,16 @@ const onGPS = useCallback(pos => {
     <div ref={wrapRef} style={{ position: 'fixed', inset: 0, zIndex: 2147483647, background: wrapperBg, display: 'flex', flexDirection: 'column' }}>
 
       
-      <div ref={mapElRef} style={{ flex: 1, width: '100%', position: 'relative', minHeight: 0 }}>
+      <div
+        ref={mapElRef}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          zIndex: 1,
+        }}
+      >
 
         
         {loading && (
@@ -1054,11 +1084,11 @@ const onGPS = useCallback(pos => {
             style={{
               position: 'absolute',
               left: 18,
-              bottom: 190,
-              zIndex: 35,
-              width: 70,
-              height: 70,
-              borderRadius: 24,
+              bottom: 176,
+              zIndex: 45,
+              width: 60,
+              height: 60,
+              borderRadius: 20,
               background: isDark ? 'rgba(6,10,18,0.78)' : 'rgba(255,255,255,0.88)',
               border: isDark ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(15,23,42,0.10)',
               boxShadow: isDark
@@ -1075,7 +1105,7 @@ const onGPS = useCallback(pos => {
           >
             <div style={{
               color: isDark ? '#F8FAFC' : '#0F172A',
-              fontSize: 25,
+              fontSize: 22,
               fontWeight: 950,
               lineHeight: 1,
               letterSpacing: -0.7
@@ -1084,9 +1114,9 @@ const onGPS = useCallback(pos => {
             </div>
             <div style={{
               color: isDark ? 'rgba(248,250,252,0.58)' : 'rgba(15,23,42,0.56)',
-              fontSize: 10,
+              fontSize: 9,
               fontWeight: 850,
-              marginTop: 4,
+              marginTop: 3,
               textTransform: 'uppercase',
               letterSpacing: 0.3
             }}>
@@ -1098,16 +1128,16 @@ const onGPS = useCallback(pos => {
         {tracking && acc != null && (
           <div style={{
             position: 'absolute',
-            bottom: nav ? 172 : 200,
-            left: 24,
-            zIndex: 35,
+            bottom: nav ? 158 : 188,
+            left: 28,
+            zIndex: 45,
             color: acc < 30 ? '#67E8F9' : acc < 60 ? '#FBBF24' : '#F87171',
-            fontSize: 10,
+            fontSize: 8,
             fontWeight: 800,
             textShadow: '0 2px 10px rgba(0,0,0,0.55)',
             pointerEvents: 'none'
           }}>
-            GPS ±{acc}m
+            ±{acc}m
           </div>
         )}
 
@@ -1125,7 +1155,7 @@ const onGPS = useCallback(pos => {
                 borderRadius: 24, padding: '28px 36px',
                 boxShadow: '0 16px 60px rgba(0,0,0,0.4),0 0 40px rgba(0,243,255,0.15)'
               }}>
-              <div style={{ fontSize: 48, marginBottom: 8 }}>🎉</div>
+              <CheckCircle2 style={{ width: 46, height: 46, color: C, marginBottom: 8 }} />
               <p style={{
                 color: C, fontSize: 22, fontWeight: 900, margin: 0,
                 textShadow: isDark ? `0 0 16px rgba(0,243,255,0.7)` : 'none'
@@ -1146,18 +1176,23 @@ const onGPS = useCallback(pos => {
 
       <div
         style={{
-          flexShrink: 0,
-          background: isDark ? '#050810' : '#f1f5f9',
-          padding: '12px 14px 14px',
-          borderTop: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(15,23,42,0.06)'
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 44,
+          padding: '0 14px max(14px, env(safe-area-inset-bottom))',
+          pointerEvents: 'none',
+          background: 'transparent'
         }}
       >
         <div
           style={{
-            maxWidth: 1120,
+            maxWidth: 1040,
             margin: '0 auto',
-            borderRadius: 26,
+            borderRadius: 28,
             overflow: 'hidden',
+            pointerEvents: 'auto',
             background: isDark
               ? 'linear-gradient(180deg, rgba(12,17,29,0.82), rgba(7,12,22,0.94))'
               : 'rgba(255,255,255,0.86)',
@@ -1278,7 +1313,7 @@ const onGPS = useCallback(pos => {
                         fontSize: 15
                       }}
                     >
-                      {voiceMuted ? '🔇' : '🔊'}
+                      {voiceMuted ? <VolumeX style={{ width: 17, height: 17 }} strokeWidth={2.4} /> : <Volume2 style={{ width: 17, height: 17 }} strokeWidth={2.4} />}
                     </button>
                   </div>
                   <div
@@ -1289,7 +1324,7 @@ const onGPS = useCallback(pos => {
                       fontWeight: 800
                     }}
                   >
-                    {eta != null ? mins(eta) : '—'} <span style={{ color: C, margin: '0 5px' }}>⌄</span> {remain != null ? dist(remain) : '—'}
+                    {eta != null ? mins(eta) : '—'} <ChevronDown style={{ width: 13, height: 13, color: C, verticalAlign: '-2px', margin: '0 5px' }} /> {remain != null ? dist(remain) : '—'}
                   </div>
                 </div>
                 <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
@@ -1308,7 +1343,7 @@ const onGPS = useCallback(pos => {
                       lineHeight: 1
                     }}
                   >
-                    {bottomOpen ? '⌄' : '⌃'}
+                    {bottomOpen ? <ChevronDown style={{ width: 18, height: 18 }} strokeWidth={2.4} /> : <ChevronUp style={{ width: 18, height: 18 }} strokeWidth={2.4} />}
                   </button>
                 </div>
               </div>
