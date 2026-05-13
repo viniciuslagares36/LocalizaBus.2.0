@@ -551,7 +551,25 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
       .addTo(m);
   }, []);
 
-  // GPS ───────────────────────────────────────────────────────────────────────
+// Instrução ─────────────────────────────────────────────────────────────────
+const updateInstr = useCallback((distM) => {
+  const data = rdRef.current;
+
+  if (!data?.instrs?.length) return;
+
+  let idx = 0;
+
+  for (let i = 0; i < data.instrs.length; i++) {
+    if (data.instrs[i].off <= distM) {
+      idx = i;
+    } else {
+      break;
+    }
+  }
+
+  setCurI(data.instrs[idx]);
+  setNextI(data.instrs[idx + 1] || null);
+}, []);
   // GPS ───────────────────────────────────────────────────────────────────────
 const onGPS = useCallback(pos => {
   const { latitude: la, longitude: lo, accuracy: ac } = pos.coords;
