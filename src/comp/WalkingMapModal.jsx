@@ -35,6 +35,7 @@ const bear = (a, b, c, d) => {
 };
 const dist = m => m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
 const mins = s => { if (s < 60) return `${s}s`; const m = Math.floor(s / 60), r = s % 60; return r ? `${m}min ${r}s` : `${m} min`; };
+const clockTime = (d = new Date()) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
 // ─── Strip HTML tags das instruções (remove <street>, </street>, <b>, etc.) ───
 const stripHtmlTags = (str) => {
@@ -199,6 +200,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
   const timerRef = useRef(null);
   const t0Ref = useRef(null);
   const lastRef = useRef(null);
+  const lastSpokenRef = useRef('');
   const rdRef = useRef(null);
   const origRef = useRef(null);
   const destRef = useRef(null);
@@ -224,6 +226,10 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
   const [covered, setCovered] = useState(0);
   const [remain, setRemain] = useState(null);
   const [acc, setAcc] = useState(null);
+  const [speedKmh, setSpeedKmh] = useState(0);
+  const [voiceMuted, setVoiceMuted] = useState(false);
+  const [clock, setClock] = useState(new Date());
+  const [navStartedAt, setNavStartedAt] = useState(null);
   const [arrived, setArrived] = useState(false);
   const [curI, setCurI] = useState(null);
   const [nextI, setNextI] = useState(null);
@@ -233,6 +239,10 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => { setIsMobile(isMobileDevice()); }, []);
+  useEffect(() => {
+    const id = setInterval(() => setClock(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // Fullscreen ────────────────────────────────────────────────────────────────
   const toggleFullscreen = useCallback(async () => {
@@ -391,9 +401,11 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
           setBrng(b);
           m.easeTo({
             center: [o.lon, o.lat],
-            zoom: 18.2,
-            pitch: 52,
+            zoom: 18.75,
+            pitch: 60,
             bearing: b,
+            padding: { top: 90, bottom: 260, left: 0, right: 0 },
+            offset: [0, 70],
             duration: 900,
           });
         }
@@ -415,43 +427,19 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
       m.addSource('wr', { type: 'geojson', data: data.geo });
       // Linha limpa: sombra discreta + rota azul, sem neon pesado.
       m.addLayer({
-        id: 'wr-shadow',
-        type: 'line',
-        source: 'wr',
+        id: 'wr-shadow', type: 'line', source: 'wr',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          // borda externa mais suave, sem aquele preto pesado
-          'line-color': isDark ? 'rgba(117, 246, 255, 0.74)' : 'rgb(255, 255, 255)',
-          'line-width': 16,
-          'line-opacity': 1,
-          'line-blur': 2
-        }
+        paint: { 'line-color': isDark ? '#020617' : '#ffffff', 'line-width': 14, 'line-opacity': 0.88 }
       });
-
       m.addLayer({
-        id: 'wr-fill',
-        type: 'line',
-        source: 'wr',
+        id: 'wr-fill', type: 'line', source: 'wr',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          // linha principal da rota
-          'line-color': '#00d5ff',
-          'line-width': 9,
-          'line-opacity': 1
-        }
+        paint: { 'line-color': isDrivingMode ? '#2563eb' : '#06b6d4', 'line-width': 8, 'line-opacity': 1 }
       });
-
       m.addLayer({
-        id: 'wr-soft-highlight',
-        type: 'line',
-        source: 'wr',
+        id: 'wr-soft-highlight', type: 'line', source: 'wr',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          // brilho central estilo app premium
-          'line-color': '#e0fbff',
-          'line-width': 2.5,
-          'line-opacity': 0.85
-        }
+        paint: { 'line-color': '#dbeafe', 'line-width': 2, 'line-opacity': 0.65 }
       });
     });
   }, [isDrivingMode, isDark]);
@@ -574,90 +562,141 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
       .addTo(m);
   }, []);
 
-  // Instrução ─────────────────────────────────────────────────────────────────
-  const updateInstr = useCallback((distM) => {
-    const data = rdRef.current;
+// Instrução ─────────────────────────────────────────────────────────────────
+const updateInstr = useCallback((distM) => {
+  const data = rdRef.current;
 
-    if (!data?.instrs?.length) return;
+  if (!data?.instrs?.length) return;
 
-    let idx = 0;
+  let idx = 0;
 
-    for (let i = 0; i < data.instrs.length; i++) {
-      if (data.instrs[i].off <= distM) {
-        idx = i;
-      } else {
-        break;
-      }
+  for (let i = 0; i < data.instrs.length; i++) {
+    if (data.instrs[i].off <= distM) {
+      idx = i;
+    } else {
+      break;
     }
+  }
 
-    setCurI(data.instrs[idx]);
-    setNextI(data.instrs[idx + 1] || null);
-  }, []);
+  setCurI(data.instrs[idx]);
+  setNextI(data.instrs[idx + 1] || null);
+}, []);
   // GPS ───────────────────────────────────────────────────────────────────────
-  const onGPS = useCallback(pos => {
-    const { latitude: la, longitude: lo, accuracy: ac } = pos.coords;
+const onGPS = useCallback(pos => {
+  const { latitude: la, longitude: lo, accuracy: ac, speed } = pos.coords;
 
-    setAcc(Math.round(ac));
+  setAcc(Math.round(ac));
 
-    let b = brng;
-    if (lastRef.current) {
-      b = bear(lastRef.current.lat, lastRef.current.lon, la, lo);
+  let b = brng;
+  let computedSpeedKmh = 0;
+
+  if (lastRef.current) {
+    b = bear(lastRef.current.lat, lastRef.current.lon, la, lo);
+
+    // Se o navegador não entregar velocidade, calcula pela distância/tempo entre leituras do GPS.
+    const deltaMeters = hav(lastRef.current.lat, lastRef.current.lon, la, lo);
+    const deltaSeconds = Math.max(0.3, (Date.now() - (lastRef.current.ts || Date.now())) / 1000);
+    computedSpeedKmh = (deltaMeters / deltaSeconds) * 3.6;
+  }
+
+  if (typeof speed === 'number' && speed >= 0) {
+    computedSpeedKmh = speed * 3.6;
+  }
+
+  // Evita número maluco quando o GPS dá salto.
+  if (!Number.isFinite(computedSpeedKmh) || computedSpeedKmh < 1) computedSpeedKmh = 0;
+  if (computedSpeedKmh > 180) computedSpeedKmh = 180;
+
+  setSpeedKmh(Math.round(computedSpeedKmh));
+
+  lastRef.current = { lat: la, lon: lo, ts: Date.now() };
+  setBrng(b);
+
+  const m = mapRef.current;
+
+  if (m) {
+    if (markerRef.current) {
+      markerRef.current.setLngLat([lo, la]);
+
+      const markerEl = markerRef.current.getElement();
+      const arrowBody = markerEl.querySelector(".nav-arrow-body");
+
+      if (arrowBody) {
+        arrowBody.style.transform = `rotate(${b}deg)`;
+      }
+    } else {
+      addUserPin(m, { lat: la, lon: lo });
     }
 
-    lastRef.current = { lat: la, lon: lo };
-    setBrng(b);
-
-    const m = mapRef.current;
-
-    if (m) {
-      if (markerRef.current) {
-        markerRef.current.setLngLat([lo, la]);
-
-        const markerEl = markerRef.current.getElement();
-        const arrowBody = markerEl.querySelector(".nav-arrow-body");
-
-        if (arrowBody) {
-          arrowBody.style.transform = `rotate(${b}deg)`;
-        }
-      } else {
-        addUserPin(m, { lat: la, lon: lo });
-      }
-
-      if (!overview) {
-        m.easeTo({
-          center: [lo, la],
-          zoom: 18.4,
-          pitch: 56,
-          bearing: b,
-          padding: { top: 80, bottom: 260, left: 0, right: 0 },
-          duration: 650,
-          easing: t => t
-        });
-      }
-
-      const rd2 = rdRef.current;
-      if (rd2 && m.getSource('wr')) {
-        drawRoute(m, rd2);
-      }
+    // Modo navegação tipo Waze: zoom mais próximo, câmera inclinada e seta mais baixa na tela.
+    if (!overview) {
+      m.easeTo({
+        center: [lo, la],
+        zoom: 19.05,
+        pitch: 64,
+        bearing: b,
+        padding: { top: 120, bottom: 320, left: 0, right: 0 },
+        offset: [0, 90],
+        duration: 650,
+        easing: t => t
+      });
     }
 
-    const o = origRef.current;
-    const de = destRef.current;
     const rd2 = rdRef.current;
-
-    if (rd2 && o) {
-      const cov = Math.min(hav(o.lat, o.lon, la, lo), rd2.totalM);
-      const rem = Math.max(0, rd2.totalM - cov);
-
-      setCovered(cov);
-      setRemain(rem);
-      updateInstr(cov);
-
-      if (de && hav(la, lo, de.lat, de.lon) < 25) {
-        setArrived(true);
-      }
+    if (rd2 && m.getSource('wr')) {
+      drawRoute(m, rd2);
     }
-  }, [overview, updateInstr, addUserPin, drawRoute, brng]);
+  }
+
+  const o = origRef.current;
+  const de = destRef.current;
+  const rd2 = rdRef.current;
+
+  if (rd2 && o) {
+    const cov = Math.min(hav(o.lat, o.lon, la, lo), rd2.totalM);
+    const rem = Math.max(0, rd2.totalM - cov);
+
+    setCovered(cov);
+    setRemain(rem);
+    updateInstr(cov);
+
+    if (de && hav(la, lo, de.lat, de.lon) < 25) {
+      setArrived(true);
+    }
+  }
+}, [overview, updateInstr, addUserPin, drawRoute, brng]);
+
+
+  // Voz da navegação ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!nav || !tracking || voiceMuted || !curI?.msg) return;
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    const text = nextI ? `${curI.msg}. Depois: ${nextI.msg}` : curI.msg;
+    if (lastSpokenRef.current === text) return;
+
+    lastSpokenRef.current = text;
+    window.speechSynthesis.cancel();
+
+    const utterance = new window.SpeechSynthesisUtterance(text);
+    utterance.lang = 'pt-BR';
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+
+    window.speechSynthesis.speak(utterance);
+  }, [nav, tracking, voiceMuted, curI, nextI]);
+
+  const toggleVoice = useCallback(() => {
+    setVoiceMuted(v => {
+      const next = !v;
+      if (!next) lastSpokenRef.current = '';
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      return next;
+    });
+  }, []);
 
   // Start/Stop ────────────────────────────────────────────────────────────────
   const startNav = useCallback(async () => {
@@ -669,6 +708,8 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
     setErr(null);
 
 
+    setNavStartedAt(new Date());
+    lastSpokenRef.current = '';
     setNav(true);
     setTracking(true);
     setOverview(false);
@@ -714,7 +755,8 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
     pauseNav();
     setNav(false); setElapsed(0); setCovered(0);
     setRemain(rdRef.current?.totalM ?? null);
-    setArrived(false); setBrng(0); lastRef.current = null;
+    setArrived(false); setBrng(0); setSpeedKmh(0); setNavStartedAt(null); lastRef.current = null; lastSpokenRef.current = '';
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
     const m = mapRef.current, rd2 = rdRef.current;
     if (m && rd2) {
       // Volta para modo navegação centrado na origem com pitch 60
@@ -739,7 +781,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
           fitAll(m, rdRef.current?.pts);
         } else if (lastRef.current) {
           // Retorno à navegação: pitch 60, bearing do GPS
-          m.easeTo({ center: [lastRef.current.lon, lastRef.current.lat], zoom: 18.4, pitch: 56, bearing: brng, padding: { top: 80, bottom: 260, left: 0, right: 0 }, duration: 650 });
+          m.easeTo({ center: [lastRef.current.lon, lastRef.current.lat], zoom: 19.05, pitch: 64, bearing: brng, padding: { top: 120, bottom: 320, left: 0, right: 0 }, offset: [0, 90], duration: 650 });
         } else if (origRef.current) {
           const o = origRef.current;
           m.easeTo({ center: [o.lon, o.lat], zoom: 18.2, pitch: 52, bearing: rdRef.current?.initialBearing || 0, duration: 650 });
@@ -784,19 +826,10 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
   return (
     <div ref={wrapRef} style={{ position: 'fixed', inset: 0, zIndex: 2147483647, background: wrapperBg, display: 'flex', flexDirection: 'column' }}>
 
+      
+      <div ref={mapElRef} style={{ flex: 1, width: '100%', position: 'relative', minHeight: 0 }}>
 
-      <div
-        ref={mapElRef}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          zIndex: 1,
-        }}
-      >
-
-
+        
         {loading && (
           <div style={{
             position: 'absolute', inset: 0, zIndex: 10, display: 'flex', flexDirection: 'column',
@@ -834,7 +867,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
           </div>
         )}
 
-
+        
         {err && !loading && (
           <div style={{
             position: 'absolute', inset: 0, zIndex: 10, display: 'flex', flexDirection: 'column',
@@ -974,7 +1007,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
           )}
         </AnimatePresence>
 
-
+        
         <motion.button whileTap={{ scale: 0.88 }} onClick={nav ? stopNav : onClose}
           style={{
             position: 'absolute', top: 'max(env(safe-area-inset-top,0px),14px)', left: 14,
@@ -1012,22 +1045,73 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
           {fs ? <Minimize2 style={{ width: 16, height: 16 }} /> : <Maximize2 style={{ width: 16, height: 16 }} />}
         </motion.button>
 
+        
+        {nav && tracking && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 10 }}
+            style={{
+              position: 'absolute',
+              left: 18,
+              bottom: 190,
+              zIndex: 35,
+              width: 70,
+              height: 70,
+              borderRadius: 24,
+              background: isDark ? 'rgba(6,10,18,0.78)' : 'rgba(255,255,255,0.88)',
+              border: isDark ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(15,23,42,0.10)',
+              boxShadow: isDark
+                ? '0 18px 42px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.06)'
+                : '0 14px 34px rgba(15,23,42,0.16), inset 0 1px 0 rgba(255,255,255,0.75)',
+              backdropFilter: 'blur(22px) saturate(170%)',
+              WebkitBackdropFilter: 'blur(22px) saturate(170%)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none'
+            }}
+          >
+            <div style={{
+              color: isDark ? '#F8FAFC' : '#0F172A',
+              fontSize: 25,
+              fontWeight: 950,
+              lineHeight: 1,
+              letterSpacing: -0.7
+            }}>
+              {speedKmh}
+            </div>
+            <div style={{
+              color: isDark ? 'rgba(248,250,252,0.58)' : 'rgba(15,23,42,0.56)',
+              fontSize: 10,
+              fontWeight: 850,
+              marginTop: 4,
+              textTransform: 'uppercase',
+              letterSpacing: 0.3
+            }}>
+              km/h
+            </div>
+          </motion.div>
+        )}
 
         {tracking && acc != null && (
           <div style={{
-            position: 'absolute', bottom: nav ? 16 : 200, left: 14, zIndex: 20,
-            background: isDark ? 'rgba(5,8,16,0.8)' : 'rgba(255,255,255,0.85)',
-            backdropFilter: 'blur(14px)',
-            border: `1px solid ${acc < 20 ? 'rgba(0,243,255,0.5)' : acc < 50 ? 'rgba(251,191,36,0.4)' : 'rgba(248,113,113,0.4)'}`,
-            borderRadius: 99, padding: '4px 10px',
-            color: acc < 20 ? C : acc < 50 ? '#fbbf24' : '#f87171',
-            fontSize: 11, fontWeight: 700
+            position: 'absolute',
+            bottom: nav ? 172 : 200,
+            left: 24,
+            zIndex: 35,
+            color: acc < 30 ? '#67E8F9' : acc < 60 ? '#FBBF24' : '#F87171',
+            fontSize: 10,
+            fontWeight: 800,
+            textShadow: '0 2px 10px rgba(0,0,0,0.55)',
+            pointerEvents: 'none'
           }}>
             GPS ±{acc}m
           </div>
         )}
 
-
+        
         <AnimatePresence>
           {arrived && (
             <motion.div key="arrived"
@@ -1062,14 +1146,10 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
 
       <div
         style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          zIndex: 40,
-          padding: '0 14px max(14px, env(safe-area-inset-bottom))',
-          pointerEvents: 'none',
-          background: 'transparent',
+          flexShrink: 0,
+          background: isDark ? '#050810' : '#f1f5f9',
+          padding: '12px 14px 14px',
+          borderTop: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(15,23,42,0.06)'
         }}
       >
         <div
@@ -1078,7 +1158,6 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
             margin: '0 auto',
             borderRadius: 26,
             overflow: 'hidden',
-            pointerEvents: 'auto',
             background: isDark
               ? 'linear-gradient(180deg, rgba(12,17,29,0.82), rgba(7,12,22,0.94))'
               : 'rgba(255, 255, 255, 0.64)',
@@ -1157,15 +1236,95 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
           <div style={{ height: 1, background: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(15,23,42,0.07)' }} />
 
           <div style={{ padding: '12px 16px 15px' }}>
-            <div style={{ height: 4, borderRadius: 999, background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.07)', overflow: 'hidden', marginBottom: 12 }}>
-              <motion.div
-                animate={{ width: `${pct}%` }}
-                transition={{ duration: 0.55 }}
-                style={{ height: '100%', borderRadius: 999, background: 'linear-gradient(90deg, #67E8F9, #2563EB)' }}
-              />
-            </div>
+            {nav && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 12,
+                  padding: '2px 0 13px',
+                  textAlign: 'center'
+                }}
+              >
+                <div style={{ flex: 1 }} />
+                <div style={{ minWidth: 170 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    <span
+                      style={{
+                        color: isDark ? '#F8FAFC' : '#0F172A',
+                        fontSize: 34,
+                        lineHeight: 1,
+                        fontWeight: 900,
+                        letterSpacing: '-1.2px'
+                      }}
+                    >
+                      {clockTime(clock)}
+                    </span>
+                    <button
+                      onClick={toggleVoice}
+                      title={voiceMuted ? 'Ativar voz' : 'Silenciar voz'}
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 17,
+                        border: isDark ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(15,23,42,0.08)',
+                        background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)',
+                        color: isDark ? '#E5E7EB' : '#334155',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        fontSize: 15
+                      }}
+                    >
+                      {voiceMuted ? '🔇' : '🔊'}
+                    </button>
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 5,
+                      color: isDark ? 'rgba(248,250,252,0.62)' : 'rgba(15,23,42,0.58)',
+                      fontSize: 14,
+                      fontWeight: 800
+                    }}
+                  >
+                    {eta != null ? mins(eta) : '—'} <span style={{ color: C, margin: '0 5px' }}>⌄</span> {remain != null ? dist(remain) : '—'}
+                  </div>
+                </div>
+                <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => setBottomOpen(v => !v)}
+                    title={bottomOpen ? 'Recolher painel' : 'Expandir painel'}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 18,
+                      border: 'none',
+                      background: 'transparent',
+                      color: isDark ? 'rgba(248,250,252,0.72)' : '#334155',
+                      cursor: 'pointer',
+                      fontSize: 22,
+                      lineHeight: 1
+                    }}
+                  >
+                    {bottomOpen ? '⌄' : '⌃'}
+                  </button>
+                </div>
+              </div>
+            )}
 
-            {!nav ? (
+            {bottomOpen && (
+              <div style={{ height: 4, borderRadius: 999, background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.07)', overflow: 'hidden', marginBottom: 12 }}>
+                <motion.div
+                  animate={{ width: `${pct}%` }}
+                  transition={{ duration: 0.55 }}
+                  style={{ height: '100%', borderRadius: 999, background: 'linear-gradient(90deg, #67E8F9, #2563EB)' }}
+                />
+              </div>
+            )}
+
+            {bottomOpen && (!nav ? (
               <div style={{ display: 'flex', gap: 10 }}>
                 {isMobile && destCoords && (
                   <motion.button
@@ -1289,7 +1448,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
                 <Play style={{ width: 16, height: 16 }} fill="currentColor" />
                 Continuar rota
               </motion.button>
-            )}
+            ))}
           </div>
         </div>
       </div>
