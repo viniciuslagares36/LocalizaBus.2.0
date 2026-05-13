@@ -1081,7 +1081,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
             pointerEvents: 'auto',
             background: isDark
               ? 'linear-gradient(180deg, rgba(12,17,29,0.82), rgba(7,12,22,0.94))'
-              : 'rgba(255,255,255,0.86)',
+              : 'rgba(255, 255, 255, 0.64)',
             border: isDark ? '1px solid rgba(255,255,255,0.09)' : '1px solid rgba(15,23,42,0.08)',
             boxShadow: isDark
               ? '0 18px 48px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.055)'
