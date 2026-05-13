@@ -158,9 +158,9 @@ class ErrorBoundary extends Component {
 const spring = { type: 'spring', stiffness: 120, damping: 22 };
 
 const carouselImages = [
+  { src: '/carousel/brasilia-catedral.webp', title: 'Catedral de Brasília' },
   { src: '/carousel/brasilia-congresso.webp', title: 'Brasília em movimento' },
   { src: '/carousel/brasilia-ponte-jk.webp', title: 'Ponte JK' },
-  { src: '/carousel/brasilia-catedral.webp', title: 'Catedral de Brasília' },
   { src: '/carousel/brasilia-torre-tv.webp', title: 'Torre de TV' },
   { src: '/carousel/brasilia-rodoviaria.webp', title: 'Rodoviária do Plano Piloto' },
 ];
@@ -403,62 +403,62 @@ const useRouteSearch = () => {
   };
 
   const degToRad = (deg) => deg * Math.PI / 180;
-const radToDeg = (rad) => rad * 180 / Math.PI;
+  const radToDeg = (rad) => rad * 180 / Math.PI;
 
-const getBearingBetweenPoints = (from, to) => {
-  const lat1 = degToRad(Number(from.lat));
-  const lat2 = degToRad(Number(to.lat));
-  const dLon = degToRad(Number(to.lon) - Number(from.lon));
+  const getBearingBetweenPoints = (from, to) => {
+    const lat1 = degToRad(Number(from.lat));
+    const lat2 = degToRad(Number(to.lat));
+    const dLon = degToRad(Number(to.lon) - Number(from.lon));
 
-  const y = Math.sin(dLon) * Math.cos(lat2);
-  const x =
-    Math.cos(lat1) * Math.sin(lat2) -
-    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+    const y = Math.sin(dLon) * Math.cos(lat2);
+    const x =
+      Math.cos(lat1) * Math.sin(lat2) -
+      Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
 
-  return (radToDeg(Math.atan2(y, x)) + 360) % 360;
-};
+    return (radToDeg(Math.atan2(y, x)) + 360) % 360;
+  };
 
-const getAngleDiff = (a, b) => {
-  return Math.abs(((Number(a) - Number(b) + 540) % 360) - 180);
-};
+  const getAngleDiff = (a, b) => {
+    return Math.abs(((Number(a) - Number(b) + 540) % 360) - 180);
+  };
 
-const getVehicleBearing = (vehicle) => {
-  const bearing = Number(
-    vehicle?.bearing ??
-    vehicle?.direcao ??
-    vehicle?.direction ??
-    vehicle?.heading
-  );
+  const getVehicleBearing = (vehicle) => {
+    const bearing = Number(
+      vehicle?.bearing ??
+      vehicle?.direcao ??
+      vehicle?.direction ??
+      vehicle?.heading
+    );
 
-  return Number.isFinite(bearing) ? bearing : null;
-};
+    return Number.isFinite(bearing) ? bearing : null;
+  };
 
-const isVehicleHeadingToStop = (vehicle, stop) => {
-  if (!vehicle?.lat || !vehicle?.lon || !stop?.lat || !stop?.lon) {
-    return false;
-  }
-
-  const vehicleBearing = getVehicleBearing(vehicle);
-
-  if (vehicleBearing == null) {
-    return true;
-  }
-
-  const bearingToStop = getBearingBetweenPoints(
-    {
-      lat: Number(vehicle.lat),
-      lon: Number(vehicle.lon),
-    },
-    {
-      lat: Number(stop.lat),
-      lon: Number(stop.lon),
+  const isVehicleHeadingToStop = (vehicle, stop) => {
+    if (!vehicle?.lat || !vehicle?.lon || !stop?.lat || !stop?.lon) {
+      return false;
     }
-  );
 
-  const diff = getAngleDiff(vehicleBearing, bearingToStop);
+    const vehicleBearing = getVehicleBearing(vehicle);
 
-  return diff <= 100;
-};
+    if (vehicleBearing == null) {
+      return true;
+    }
+
+    const bearingToStop = getBearingBetweenPoints(
+      {
+        lat: Number(vehicle.lat),
+        lon: Number(vehicle.lon),
+      },
+      {
+        lat: Number(stop.lat),
+        lon: Number(stop.lon),
+      }
+    );
+
+    const diff = getAngleDiff(vehicleBearing, bearingToStop);
+
+    return diff <= 100;
+  };
   const snapVehicleToRoute = (vehicle, route) => {
     if (!vehicle?.lat || !vehicle?.lon) {
       return null;
@@ -634,21 +634,21 @@ const isVehicleHeadingToStop = (vehicle, stop) => {
       .slice(0, limit);
   };
 
-const getBestUserStopForVehicle = (vehicle, userStops) => {
-  const stops = getTargetUserStops(userStops, 3);
+  const getBestUserStopForVehicle = (vehicle, userStops) => {
+    const stops = getTargetUserStops(userStops, 3);
 
-  if (!stops.length) return null;
+    if (!stops.length) return null;
 
-  const validStops = stops.filter((stop) =>
-    isVehicleHeadingToStop(vehicle, stop)
-  );
+    const validStops = stops.filter((stop) =>
+      isVehicleHeadingToStop(vehicle, stop)
+    );
 
-  if (!validStops.length) {
-    return null;
-  }
+    if (!validStops.length) {
+      return null;
+    }
 
-  return validStops[0];
-};
+    return validStops[0];
+  };
 
   const getNearbyStops = async (coords) => {
     try {
@@ -821,46 +821,46 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
           isLineAllowedAtOrigin(vehicle.line, allowedOriginLines)
         );
       })
-.map((vehicle) => {
-  const vehicleCoords = {
-    lat: Number(vehicle.lat),
-    lon: Number(vehicle.lon),
-  };
+      .map((vehicle) => {
+        const vehicleCoords = {
+          lat: Number(vehicle.lat),
+          lon: Number(vehicle.lon),
+        };
 
-  const distanceToOriginKm = calcDist(originCoords, vehicleCoords);
+        const distanceToOriginKm = calcDist(originCoords, vehicleCoords);
 
-  const distanceToDestinationKm = calcDist(destinationCoords, vehicleCoords);
+        const distanceToDestinationKm = calcDist(destinationCoords, vehicleCoords);
 
-  const gpsUpdatedMinutes = getGpsAgeMinutes(vehicle);
+        const gpsUpdatedMinutes = getGpsAgeMinutes(vehicle);
 
-  const targetStop = getBestUserStopForVehicle(vehicle, userTargetStops);
+        const targetStop = getBestUserStopForVehicle(vehicle, userTargetStops);
 
-  if (!targetStop) {
-    return null;
-  }
+        if (!targetStop) {
+          return null;
+        }
 
-  const distanceToTargetStopKm = calcDist(vehicleCoords, {
-    lat: Number(targetStop.lat),
-    lon: Number(targetStop.lon),
-  });
+        const distanceToTargetStopKm = calcDist(vehicleCoords, {
+          lat: Number(targetStop.lat),
+          lon: Number(targetStop.lon),
+        });
 
-  const etaToNearestStopMinutes = estimateBusEtaToStop(vehicle, targetStop);
+        const etaToNearestStopMinutes = estimateBusEtaToStop(vehicle, targetStop);
 
-  if (etaToNearestStopMinutes == null) {
-    return null;
-  }
+        if (etaToNearestStopMinutes == null) {
+          return null;
+        }
 
-  return {
-    ...vehicle,
-    distanceToOriginKm,
-    distanceToDestinationKm,
-    distanceToTargetStopKm,
-    gpsUpdatedMinutes,
-    targetStop,
-    etaToNearestStopMinutes,
-  };
-})
-.filter(Boolean)
+        return {
+          ...vehicle,
+          distanceToOriginKm,
+          distanceToDestinationKm,
+          distanceToTargetStopKm,
+          gpsUpdatedMinutes,
+          targetStop,
+          etaToNearestStopMinutes,
+        };
+      })
+      .filter(Boolean)
       // Primeiro mostra ônibus mais perto da parada/origem do usuário.
       .sort((a, b) => {
         const etaA = a.etaToNearestStopMinutes ?? 9999;
@@ -1206,9 +1206,9 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
       const normalizedDest = String(destinationAddress || '').toLowerCase();
       const directionFilter =
         normalizedDest.includes('rodovi') ||
-        normalizedDest.includes('plano piloto') ||
-        normalizedDest.includes('w3') ||
-        normalizedDest.includes('centro')
+          normalizedDest.includes('plano piloto') ||
+          normalizedDest.includes('w3') ||
+          normalizedDest.includes('centro')
           ? 'ida'
           : normalizedDest.includes('brazl') ||
             normalizedDest.includes('taguatinga') ||
@@ -1311,303 +1311,303 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
     }
   };
 
-const searchRoute = async (originAddress, destinationAddress, mode) => {
-  if (!originAddress || !destinationAddress || isSearchingRef.current) return;
+  const searchRoute = async (originAddress, destinationAddress, mode) => {
+    if (!originAddress || !destinationAddress || isSearchingRef.current) return;
 
-  abortControllerRef.current?.abort();
-  abortControllerRef.current = new AbortController();
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
 
-  const { signal } = abortControllerRef.current;
+    const { signal } = abortControllerRef.current;
 
-  isSearchingRef.current = true;
-  setLoading(true);
-  setError(null);
+    isSearchingRef.current = true;
+    setLoading(true);
+    setError(null);
 
-  try {
-    const originCoordsPromise =
-      window.__lastOriginCoords && window.__lastOriginAddress === originAddress
-        ? Promise.resolve({
+    try {
+      const originCoordsPromise =
+        window.__lastOriginCoords && window.__lastOriginAddress === originAddress
+          ? Promise.resolve({
             ...window.__lastOriginCoords,
             displayName: originAddress,
             source: 'Mapa',
           })
-        : geocodeAddress(originAddress, signal);
+          : geocodeAddress(originAddress, signal);
 
-    const [originCoords, destCoords] = await Promise.all([
-      originCoordsPromise,
-      geocodeAddress(destinationAddress, signal),
-    ]);
+      const [originCoords, destCoords] = await Promise.all([
+        originCoordsPromise,
+        geocodeAddress(destinationAddress, signal),
+      ]);
 
-    const nearbyStopsPromise = getNearbyStops(originCoords);
+      const nearbyStopsPromise = getNearbyStops(originCoords);
 
-    const realtimeDataPromise =
-      mode === 'bus'
-        ? getRealtimeVehicles(signal)
-        : Promise.resolve([]);
+      const realtimeDataPromise =
+        mode === 'bus'
+          ? getRealtimeVehicles(signal)
+          : Promise.resolve([]);
 
-    const [nearbyStops, realtimeData] = await Promise.all([
-      nearbyStopsPromise,
-      realtimeDataPromise,
-    ]);
+      const [nearbyStops, realtimeData] = await Promise.all([
+        nearbyStopsPromise,
+        realtimeDataPromise,
+      ]);
 
-    const { allowedLines: allowedOriginLines, routeGroups: originStopRouteGroups } =
-      mode === 'bus'
-        ? await getAllowedLinesForStops(nearbyStops, 5)
-        : { allowedLines: new Set(), routeGroups: [] };
+      const { allowedLines: allowedOriginLines, routeGroups: originStopRouteGroups } =
+        mode === 'bus'
+          ? await getAllowedLinesForStops(nearbyStops, 5)
+          : { allowedLines: new Set(), routeGroups: [] };
 
-    window.__lastAllowedOriginLines = allowedOriginLines;
-    window.__lastOriginStopRouteGroups = originStopRouteGroups;
+      window.__lastAllowedOriginLines = allowedOriginLines;
+      window.__lastOriginStopRouteGroups = originStopRouteGroups;
 
-    window.__lastOriginCoords = originCoords;
-    window.__lastDestinationCoords = destCoords;
-    window.__lastOriginAddress = originAddress;
-    window.__lastDestinationAddress = destinationAddress;
-    window.__lastNearbyStops = nearbyStops;
-    window.__lastSearchMode = mode;
-    window.__lastSearchType = mode === 'bus' ? 'route' : mode;
+      window.__lastOriginCoords = originCoords;
+      window.__lastDestinationCoords = destCoords;
+      window.__lastOriginAddress = originAddress;
+      window.__lastDestinationAddress = destinationAddress;
+      window.__lastNearbyStops = nearbyStops;
+      window.__lastSearchMode = mode;
+      window.__lastSearchType = mode === 'bus' ? 'route' : mode;
 
-    let alreadyShowedFastResult = false;
+      let alreadyShowedFastResult = false;
 
-    if (mode === 'bus') {
-      // Aguarda o planejamento oficial antes de mostrar veículos ao vivo.
-      // Isso evita sugerir ônibus que estão perto no GPS, mas não servem para a rota.
-    }
-
-    let transitRoute = [];
-
-    try {
-      transitRoute = await getTransportPlan(
-        originCoords,
-        destCoords,
-        signal,
-        mode
-      );
-    } catch (error) {
-      const msg = String(error?.message || error || '');
-
-      const isAbort =
-        error?.name === 'AbortError' ||
-        msg.toLowerCase().includes('aborted') ||
-        msg.toLowerCase().includes('signal is aborted');
-
-      if (!isAbort) {
-        console.warn('[Mobilibus OTP plan]', msg);
+      if (mode === 'bus') {
+        // Aguarda o planejamento oficial antes de mostrar veículos ao vivo.
+        // Isso evita sugerir ônibus que estão perto no GPS, mas não servem para a rota.
       }
 
-      transitRoute = [];
-    }
+      let transitRoute = [];
 
-    let finalCombined = combineRoutes(
-      transitRoute,
-      nearbyStops,
-      originAddress,
-      destinationAddress,
-      mode,
-      { originCoords, destCoords }
-    );
+      try {
+        transitRoute = await getTransportPlan(
+          originCoords,
+          destCoords,
+          signal,
+          mode
+        );
+      } catch (error) {
+        const msg = String(error?.message || error || '');
 
-    if (mode === 'bus') {
-      finalCombined = filterRoutesByBoardingDistance(
-        finalCombined,
-        originCoords,
-        nearbyStops
-      );
-    }
+        const isAbort =
+          error?.name === 'AbortError' ||
+          msg.toLowerCase().includes('aborted') ||
+          msg.toLowerCase().includes('signal is aborted');
 
-    if (mode === 'bus' && allowedOriginLines.size > 0) {
-      finalCombined = finalCombined.filter((route) =>
-        isLineAllowedAtOrigin(route.line, allowedOriginLines)
-      );
-    }
-
-    window.__lastOtpRoutes = finalCombined;
-
-    if (mode === 'bus' && finalCombined.length === 0) {
-      setRealtimeVehicles(realtimeData);
-      setRoutes([]);
-      setError(
-        `Não encontrei uma rota oficial de "${originAddress}" para "${destinationAddress}". Tente escolher uma sugestão oficial da lista ou pesquise diretamente pelo número da linha.`
-      );
-      return;
-    }
-
-    if (mode === 'metro' && finalCombined.length === 0 && nearbyStops.length > 0) {
-      finalCombined = nearbyStops.slice(0, 5).map((stop, index) => ({
-        id: `semob_stop_${stop.stopId || index}`,
-        line: mode === 'metro' ? 'Estação/parada próxima' : 'Parada próxima',
-        routeId: stop.stopId || 'SEMOB_STOP',
-        destination: destinationAddress,
-        origin: originAddress,
-        time: Math.max(3, Math.ceil((stop.distanceKm || 0.3) * 12)),
-        estimatedTime: null,
-        stops: 0,
-        distance: Number(stop.distanceKm || 0).toFixed(1),
-        walkMinutes: Math.max(3, Math.ceil((stop.distanceKm || 0.3) * 12)),
-        fromStop: stop.stopName || 'Parada próxima',
-        toStop: destinationAddress,
-        mode: mode === 'metro' ? 'METRO' : 'BUS',
-        source: 'Mobilibus/SEMOB',
-        instruction: `Vá até ${stop.stopName || 'uma parada próxima'} para consultar linhas disponíveis`,
-        tripId: null,
-        isLive: false,
-        isStopFallback: true,
-        lat: stop.lat,
-        lon: stop.lon,
-        nearestStopName: stop.stopName || 'Parada próxima',
-        nearestStopLat: stop.lat,
-        nearestStopLon: stop.lon,
-        nearbyStops,
-      }));
-    }
-
-    if (mode === 'walk' && finalCombined.length === 0) {
-      const distKm = calcDist(originCoords, destCoords);
-      const walkMinutes = Math.ceil((distKm / 5) * 60);
-
-      finalCombined = [{
-        id: 'walk_local',
-        line: 'A pé',
-        routeId: 'WALK',
-        destination: destinationAddress,
-        origin: originAddress,
-        time: walkMinutes,
-        estimatedTime: walkMinutes,
-        stops: 0,
-        distance: distKm.toFixed(1),
-        walkMinutes,
-        fromStop: originAddress,
-        toStop: destinationAddress,
-        mode: 'WALK',
-        instruction: `Caminhe ${distKm.toFixed(1)} km (~${walkMinutes} min) até o destino`,
-        tripId: null,
-        isWalk: true,
-        isNavigationRoute: true,
-        navigationMode: 'walk',
-        isLive: false,
-        nearbyStops,
-        fromLat: originCoords.lat,
-        fromLon: originCoords.lon,
-        toLat: destCoords.lat,
-        toLon: destCoords.lon,
-      }];
-    }
-
-    if ((mode === 'car' || mode === 'moto') && finalCombined.length === 0) {
-      const distKm = calcDist(originCoords, destCoords);
-      const averageSpeedKmh = mode === 'moto' ? 38 : 32;
-      const travelMinutes = Math.max(2, Math.ceil((distKm / averageSpeedKmh) * 60));
-      const label = mode === 'moto' ? 'Moto' : 'Carro';
-      const apiMode = mode === 'moto' ? 'motorcycle' : 'car';
-
-      finalCombined = [{
-        id: `${mode}_local`,
-        line: label,
-        routeId: mode.toUpperCase(),
-        destination: destinationAddress,
-        origin: originAddress,
-        time: travelMinutes,
-        estimatedTime: travelMinutes,
-        stops: 0,
-        distance: distKm.toFixed(1),
-        walkMinutes: 0,
-        fromStop: originAddress,
-        toStop: destinationAddress,
-        mode: mode.toUpperCase(),
-        instruction: `Navegue de ${label.toLowerCase()} por ${distKm.toFixed(1)} km (~${travelMinutes} min) até o destino`,
-        tripId: null,
-        isWalk: false,
-        isNavigationRoute: true,
-        navigationMode: apiMode,
-        isLive: false,
-        nearbyStops,
-        fromLat: originCoords.lat,
-        fromLon: originCoords.lon,
-        toLat: destCoords.lat,
-        toLon: destCoords.lon,
-      }];
-    }
-
-    finalCombined = finalCombined.map((route) => ({
-      ...route,
-      nearbyStops,
-    }));
-
-    const finalRoutes = finalCombined.map((r) => {
-      const rv = findBestVehicleForRoute(realtimeData, r);
-
-      if (rv) {
-        const routeBoardingStop = {
-          lat: r.nearestStopLat,
-          lon: r.nearestStopLon,
-        };
-
-        if (
-          routeBoardingStop.lat &&
-          routeBoardingStop.lon &&
-          !isVehicleHeadingToStop(rv, routeBoardingStop)
-        ) {
-          return { ...r, isLive: false, realTimeGPS: null };
+        if (!isAbort) {
+          console.warn('[Mobilibus OTP plan]', msg);
         }
 
-        const etaMin = getEtaMinutes(rv.eta);
-        const snappedPosition = snapVehicleToRoute(rv, r);
-
-        const stopForEta = {
-          lat: r.nearestStopLat,
-          lon: r.nearestStopLon,
-        };
-
-        const etaToNearestStopMinutes =
-          estimateBusEtaToStop(rv, stopForEta) ??
-          etaMin ??
-          r.etaToNearestStopMinutes ??
-          r.time;
-
-        return {
-          ...r,
-          time: etaToNearestStopMinutes,
-          etaToNearestStopMinutes,
-          realTimeGPS: {
-            lat: snappedPosition?.lat ?? Number(rv.lat),
-            lon: snappedPosition?.lon ?? Number(rv.lon),
-
-            rawLat: Number(rv.lat),
-            rawLon: Number(rv.lon),
-
-            snappedToRoute: snappedPosition?.snappedToRoute || false,
-            snapDistanceKm: snappedPosition?.snapDistanceKm ?? null,
-
-            bearing: rv.bearing,
-            speed: rv.speed,
-            eta: rv.eta,
-            horario: rv.horario || rv.updatedAt,
-            updatedAt: rv.updatedAt || rv.horario,
-            numero: rv.numero,
-            line: rv.line,
-            sentido: rv.sentido || null,
-            operadora: getVehicleOperatorName(rv),
-          },
-          gpsUpdatedMinutes: getGpsAgeMinutes(rv),
-          isLive: true,
-        };
+        transitRoute = [];
       }
 
-      return r.isLive ? r : { ...r, isLive: false };
-    });
+      let finalCombined = combineRoutes(
+        transitRoute,
+        nearbyStops,
+        originAddress,
+        destinationAddress,
+        mode,
+        { originCoords, destCoords }
+      );
 
-    if (finalRoutes.length > 0 || !alreadyShowedFastResult) {
-      setRealtimeVehicles(realtimeData);
-      setRoutes(finalRoutes);
+      if (mode === 'bus') {
+        finalCombined = filterRoutesByBoardingDistance(
+          finalCombined,
+          originCoords,
+          nearbyStops
+        );
+      }
+
+      if (mode === 'bus' && allowedOriginLines.size > 0) {
+        finalCombined = finalCombined.filter((route) =>
+          isLineAllowedAtOrigin(route.line, allowedOriginLines)
+        );
+      }
+
+      window.__lastOtpRoutes = finalCombined;
+
+      if (mode === 'bus' && finalCombined.length === 0) {
+        setRealtimeVehicles(realtimeData);
+        setRoutes([]);
+        setError(
+          `Não encontrei uma rota oficial de "${originAddress}" para "${destinationAddress}". Tente escolher uma sugestão oficial da lista ou pesquise diretamente pelo número da linha.`
+        );
+        return;
+      }
+
+      if (mode === 'metro' && finalCombined.length === 0 && nearbyStops.length > 0) {
+        finalCombined = nearbyStops.slice(0, 5).map((stop, index) => ({
+          id: `semob_stop_${stop.stopId || index}`,
+          line: mode === 'metro' ? 'Estação/parada próxima' : 'Parada próxima',
+          routeId: stop.stopId || 'SEMOB_STOP',
+          destination: destinationAddress,
+          origin: originAddress,
+          time: Math.max(3, Math.ceil((stop.distanceKm || 0.3) * 12)),
+          estimatedTime: null,
+          stops: 0,
+          distance: Number(stop.distanceKm || 0).toFixed(1),
+          walkMinutes: Math.max(3, Math.ceil((stop.distanceKm || 0.3) * 12)),
+          fromStop: stop.stopName || 'Parada próxima',
+          toStop: destinationAddress,
+          mode: mode === 'metro' ? 'METRO' : 'BUS',
+          source: 'Mobilibus/SEMOB',
+          instruction: `Vá até ${stop.stopName || 'uma parada próxima'} para consultar linhas disponíveis`,
+          tripId: null,
+          isLive: false,
+          isStopFallback: true,
+          lat: stop.lat,
+          lon: stop.lon,
+          nearestStopName: stop.stopName || 'Parada próxima',
+          nearestStopLat: stop.lat,
+          nearestStopLon: stop.lon,
+          nearbyStops,
+        }));
+      }
+
+      if (mode === 'walk' && finalCombined.length === 0) {
+        const distKm = calcDist(originCoords, destCoords);
+        const walkMinutes = Math.ceil((distKm / 5) * 60);
+
+        finalCombined = [{
+          id: 'walk_local',
+          line: 'A pé',
+          routeId: 'WALK',
+          destination: destinationAddress,
+          origin: originAddress,
+          time: walkMinutes,
+          estimatedTime: walkMinutes,
+          stops: 0,
+          distance: distKm.toFixed(1),
+          walkMinutes,
+          fromStop: originAddress,
+          toStop: destinationAddress,
+          mode: 'WALK',
+          instruction: `Caminhe ${distKm.toFixed(1)} km (~${walkMinutes} min) até o destino`,
+          tripId: null,
+          isWalk: true,
+          isNavigationRoute: true,
+          navigationMode: 'walk',
+          isLive: false,
+          nearbyStops,
+          fromLat: originCoords.lat,
+          fromLon: originCoords.lon,
+          toLat: destCoords.lat,
+          toLon: destCoords.lon,
+        }];
+      }
+
+      if ((mode === 'car' || mode === 'moto') && finalCombined.length === 0) {
+        const distKm = calcDist(originCoords, destCoords);
+        const averageSpeedKmh = mode === 'moto' ? 38 : 32;
+        const travelMinutes = Math.max(2, Math.ceil((distKm / averageSpeedKmh) * 60));
+        const label = mode === 'moto' ? 'Moto' : 'Carro';
+        const apiMode = mode === 'moto' ? 'motorcycle' : 'car';
+
+        finalCombined = [{
+          id: `${mode}_local`,
+          line: label,
+          routeId: mode.toUpperCase(),
+          destination: destinationAddress,
+          origin: originAddress,
+          time: travelMinutes,
+          estimatedTime: travelMinutes,
+          stops: 0,
+          distance: distKm.toFixed(1),
+          walkMinutes: 0,
+          fromStop: originAddress,
+          toStop: destinationAddress,
+          mode: mode.toUpperCase(),
+          instruction: `Navegue de ${label.toLowerCase()} por ${distKm.toFixed(1)} km (~${travelMinutes} min) até o destino`,
+          tripId: null,
+          isWalk: false,
+          isNavigationRoute: true,
+          navigationMode: apiMode,
+          isLive: false,
+          nearbyStops,
+          fromLat: originCoords.lat,
+          fromLon: originCoords.lon,
+          toLat: destCoords.lat,
+          toLon: destCoords.lon,
+        }];
+      }
+
+      finalCombined = finalCombined.map((route) => ({
+        ...route,
+        nearbyStops,
+      }));
+
+      const finalRoutes = finalCombined.map((r) => {
+        const rv = findBestVehicleForRoute(realtimeData, r);
+
+        if (rv) {
+          const routeBoardingStop = {
+            lat: r.nearestStopLat,
+            lon: r.nearestStopLon,
+          };
+
+          if (
+            routeBoardingStop.lat &&
+            routeBoardingStop.lon &&
+            !isVehicleHeadingToStop(rv, routeBoardingStop)
+          ) {
+            return { ...r, isLive: false, realTimeGPS: null };
+          }
+
+          const etaMin = getEtaMinutes(rv.eta);
+          const snappedPosition = snapVehicleToRoute(rv, r);
+
+          const stopForEta = {
+            lat: r.nearestStopLat,
+            lon: r.nearestStopLon,
+          };
+
+          const etaToNearestStopMinutes =
+            estimateBusEtaToStop(rv, stopForEta) ??
+            etaMin ??
+            r.etaToNearestStopMinutes ??
+            r.time;
+
+          return {
+            ...r,
+            time: etaToNearestStopMinutes,
+            etaToNearestStopMinutes,
+            realTimeGPS: {
+              lat: snappedPosition?.lat ?? Number(rv.lat),
+              lon: snappedPosition?.lon ?? Number(rv.lon),
+
+              rawLat: Number(rv.lat),
+              rawLon: Number(rv.lon),
+
+              snappedToRoute: snappedPosition?.snappedToRoute || false,
+              snapDistanceKm: snappedPosition?.snapDistanceKm ?? null,
+
+              bearing: rv.bearing,
+              speed: rv.speed,
+              eta: rv.eta,
+              horario: rv.horario || rv.updatedAt,
+              updatedAt: rv.updatedAt || rv.horario,
+              numero: rv.numero,
+              line: rv.line,
+              sentido: rv.sentido || null,
+              operadora: getVehicleOperatorName(rv),
+            },
+            gpsUpdatedMinutes: getGpsAgeMinutes(rv),
+            isLive: true,
+          };
+        }
+
+        return r.isLive ? r : { ...r, isLive: false };
+      });
+
+      if (finalRoutes.length > 0 || !alreadyShowedFastResult) {
+        setRealtimeVehicles(realtimeData);
+        setRoutes(finalRoutes);
+      }
+    } catch (err) {
+      if (!axios.isCancel(err) && err.name !== 'AbortError') {
+        setError(err.message || 'Erro ao buscar rotas');
+      }
+    } finally {
+      setLoading(false);
+      isSearchingRef.current = false;
     }
-  } catch (err) {
-    if (!axios.isCancel(err) && err.name !== 'AbortError') {
-      setError(err.message || 'Erro ao buscar rotas');
-    }
-  } finally {
-    setLoading(false);
-    isSearchingRef.current = false;
-  }
-};
+  };
   useEffect(() => {
     const refresh = async () => {
       try {
@@ -1658,62 +1658,62 @@ const searchRoute = async (originAddress, destinationAddress, mode) => {
           const rebuiltRoutes = baseRoutesWithStops.map((r) => {
             const rv = findBestVehicleForRoute(nv, r);
 
-if (rv) {
-  const routeBoardingStop = {
-    lat: r.nearestStopLat,
-    lon: r.nearestStopLon,
-  };
+            if (rv) {
+              const routeBoardingStop = {
+                lat: r.nearestStopLat,
+                lon: r.nearestStopLon,
+              };
 
-  if (
-    routeBoardingStop.lat &&
-    routeBoardingStop.lon &&
-    !isVehicleHeadingToStop(rv, routeBoardingStop)
-  ) {
-    return { ...r, isLive: false, realTimeGPS: null };
-  }
+              if (
+                routeBoardingStop.lat &&
+                routeBoardingStop.lon &&
+                !isVehicleHeadingToStop(rv, routeBoardingStop)
+              ) {
+                return { ...r, isLive: false, realTimeGPS: null };
+              }
 
-  const etaMin = getEtaMinutes(rv.eta);
-  const snappedPosition = snapVehicleToRoute(rv, r);
+              const etaMin = getEtaMinutes(rv.eta);
+              const snappedPosition = snapVehicleToRoute(rv, r);
 
-  const stopForEta = {
-    lat: r.nearestStopLat,
-    lon: r.nearestStopLon,
-  };
+              const stopForEta = {
+                lat: r.nearestStopLat,
+                lon: r.nearestStopLon,
+              };
 
-  const etaToNearestStopMinutes =
-    estimateBusEtaToStop(rv, stopForEta) ??
-    etaMin ??
-    r.etaToNearestStopMinutes ??
-    r.time;
+              const etaToNearestStopMinutes =
+                estimateBusEtaToStop(rv, stopForEta) ??
+                etaMin ??
+                r.etaToNearestStopMinutes ??
+                r.time;
 
-  return {
-    ...r,
-    time: etaToNearestStopMinutes,
-    etaToNearestStopMinutes,
-    realTimeGPS: {
-      lat: snappedPosition?.lat ?? Number(rv.lat),
-      lon: snappedPosition?.lon ?? Number(rv.lon),
+              return {
+                ...r,
+                time: etaToNearestStopMinutes,
+                etaToNearestStopMinutes,
+                realTimeGPS: {
+                  lat: snappedPosition?.lat ?? Number(rv.lat),
+                  lon: snappedPosition?.lon ?? Number(rv.lon),
 
-      rawLat: Number(rv.lat),
-      rawLon: Number(rv.lon),
+                  rawLat: Number(rv.lat),
+                  rawLon: Number(rv.lon),
 
-      snappedToRoute: snappedPosition?.snappedToRoute || false,
-      snapDistanceKm: snappedPosition?.snapDistanceKm ?? null,
+                  snappedToRoute: snappedPosition?.snappedToRoute || false,
+                  snapDistanceKm: snappedPosition?.snapDistanceKm ?? null,
 
-      bearing: rv.bearing,
-      speed: rv.speed,
-      eta: rv.eta,
-      horario: rv.horario || rv.updatedAt,
-      updatedAt: rv.updatedAt || rv.horario,
-      numero: rv.numero,
-      line: rv.line,
-      sentido: rv.sentido || null,
-      operadora: getVehicleOperatorName(rv),
-    },
-    gpsUpdatedMinutes: getGpsAgeMinutes(rv),
-    isLive: true,
-  };
-}
+                  bearing: rv.bearing,
+                  speed: rv.speed,
+                  eta: rv.eta,
+                  horario: rv.horario || rv.updatedAt,
+                  updatedAt: rv.updatedAt || rv.horario,
+                  numero: rv.numero,
+                  line: rv.line,
+                  sentido: rv.sentido || null,
+                  operadora: getVehicleOperatorName(rv),
+                },
+                gpsUpdatedMinutes: getGpsAgeMinutes(rv),
+                isLive: true,
+              };
+            }
 
             return r.isLive ? r : { ...r, isLive: false };
           });
@@ -2106,72 +2106,72 @@ const LocationInput = ({
 
   const suggestionsDropdown =
     showSuggestions &&
-    suggestions.length > 0 &&
-    dropdownStyle &&
-    typeof document !== 'undefined'
+      suggestions.length > 0 &&
+      dropdownStyle &&
+      typeof document !== 'undefined'
       ? createPortal(
-          <AnimatePresence>
-            <motion.div
-              data-location-dropdown="true"
-              initial={{ opacity: 0, y: -6, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{ duration: 0.14 }}
-              style={dropdownStyle}
-              className="bg-[var(--dropdown-bg)] backdrop-blur-xl rounded-xl shadow-2xl border border-[var(--border)] max-h-72 overflow-y-auto"
-            >
-              {suggestions.map((s, i) => {
-                const isLineSuggestion = s.isBusLine || s.type === 'bus-line';
-                const label = isLineSuggestion ? s.line : s.address?.freeformAddress;
+        <AnimatePresence>
+          <motion.div
+            data-location-dropdown="true"
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.14 }}
+            style={dropdownStyle}
+            className="bg-[var(--dropdown-bg)] backdrop-blur-xl rounded-xl shadow-2xl border border-[var(--border)] max-h-72 overflow-y-auto"
+          >
+            {suggestions.map((s, i) => {
+              const isLineSuggestion = s.isBusLine || s.type === 'bus-line';
+              const label = isLineSuggestion ? s.line : s.address?.freeformAddress;
 
-                return (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => {
-                      onChange(label || '');
-                      closeSuggestions();
-                      setSuggestions([]);
-                    }}
-                    className="w-full text-left px-4 py-2.5 hover:bg-[var(--accent)]/8 transition-colors border-b border-[var(--border)] last:border-0"
-                  >
-                    {isLineSuggestion ? (
-                      <div className="flex items-center gap-3">
-                        <span
-                          className="inline-flex min-w-[58px] items-center justify-center rounded-md border px-2.5 py-1 text-xs font-black tracking-tight shadow-sm"
-                          style={getLineBadgeStyle(s.line, s.color, s.textColor)}
-                        >
-                          {getLineBadgeLabel(s.line)}
-                        </span>
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => {
+                    onChange(label || '');
+                    closeSuggestions();
+                    setSuggestions([]);
+                  }}
+                  className="w-full text-left px-4 py-2.5 hover:bg-[var(--accent)]/8 transition-colors border-b border-[var(--border)] last:border-0"
+                >
+                  {isLineSuggestion ? (
+                    <div className="flex items-center gap-3">
+                      <span
+                        className="inline-flex min-w-[58px] items-center justify-center rounded-md border px-2.5 py-1 text-xs font-black tracking-tight shadow-sm"
+                        style={getLineBadgeStyle(s.line, s.color, s.textColor)}
+                      >
+                        {getLineBadgeLabel(s.line)}
+                      </span>
 
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-[var(--text-primary)] truncate">
-                            {s.lineName || `Consultar linha ${s.line}`}
-                          </p>
-                          <p className="text-xs text-[var(--text-tertiary)] truncate">
-                            {s.source ? `${s.source} • ` : ''}
-                            Ver ônibus ao vivo, ida e volta
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <p className="text-sm font-medium text-[var(--text-primary)] truncate">
-                          {s.address?.freeformAddress}
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                          {s.lineName || `Consultar linha ${s.line}`}
                         </p>
                         <p className="text-xs text-[var(--text-tertiary)] truncate">
                           {s.source ? `${s.source} • ` : ''}
-                          {s.address?.municipality || s.address?.countrySubdivision}
+                          Ver ônibus ao vivo, ida e volta
                         </p>
-                      </>
-                    )}
-                  </button>
-                );
-              })}
-            </motion.div>
-          </AnimatePresence>,
-          document.body
-        )
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-[var(--text-primary)] truncate">
+                        {s.address?.freeformAddress}
+                      </p>
+                      <p className="text-xs text-[var(--text-tertiary)] truncate">
+                        {s.source ? `${s.source} • ` : ''}
+                        {s.address?.municipality || s.address?.countrySubdivision}
+                      </p>
+                    </>
+                  )}
+                </button>
+              );
+            })}
+          </motion.div>
+        </AnimatePresence>,
+        document.body
+      )
       : null;
 
   return (
@@ -2457,73 +2457,73 @@ function App() {
   } = useRouteSearch();
   const searchRef = useRef(null);
   useEffect(() => {
-  let mounted = true;
+    let mounted = true;
 
-  const loadDfStops = async () => {
-    try {
-      const stops = await getAllSemobStops();
+    const loadDfStops = async () => {
+      try {
+        const stops = await getAllSemobStops();
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      const normalizedStops = (stops || [])
-        .map((stop) => ({
-          id: stop.stopId || `${stop.position?.lat}_${stop.position?.lon}`,
-          stopId: stop.stopId || null,
-          name: stop.name || 'Parada de ônibus',
-          lat: Number(stop.position?.lat),
-          lon: Number(stop.position?.lon),
-          address: stop.address || '',
-        }))
-        .filter((stop) => Number.isFinite(stop.lat) && Number.isFinite(stop.lon));
+        const normalizedStops = (stops || [])
+          .map((stop) => ({
+            id: stop.stopId || `${stop.position?.lat}_${stop.position?.lon}`,
+            stopId: stop.stopId || null,
+            name: stop.name || 'Parada de ônibus',
+            lat: Number(stop.position?.lat),
+            lon: Number(stop.position?.lon),
+            address: stop.address || '',
+          }))
+          .filter((stop) => Number.isFinite(stop.lat) && Number.isFinite(stop.lon));
 
-      setAllDfStops(normalizedStops);
-    } catch (error) {
-      console.warn('Não foi possível carregar as paradas do DF:', error?.message || error);
-    }
-  };
+        setAllDfStops(normalizedStops);
+      } catch (error) {
+        console.warn('Não foi possível carregar as paradas do DF:', error?.message || error);
+      }
+    };
 
-  loadDfStops();
+    loadDfStops();
 
-  return () => {
-    mounted = false;
-  };
-}, []);
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handlePickLocation = async ({ lat, lon }) => {
-  const coords = {
-    lat: Number(lat),
-    lon: Number(lon),
-  };
+    const coords = {
+      lat: Number(lat),
+      lon: Number(lon),
+    };
 
-  setPickedLocation(coords);
-  setUserLocationCoords(coords);
-  setOrigin(`${coords.lat},${coords.lon}`);
+    setPickedLocation(coords);
+    setUserLocationCoords(coords);
+    setOrigin(`${coords.lat},${coords.lon}`);
 
-  window.__lastOriginCoords = coords;
-  window.__lastOriginAddress = 'Local escolhido no mapa';
+    window.__lastOriginCoords = coords;
+    window.__lastOriginAddress = 'Local escolhido no mapa';
 
-  try {
-    const response = await axios.get(
-      `https://api.tomtom.com/search/2/reverseGeocode/${coords.lat},${coords.lon}.json`,
-      {
-        params: {
-          key: TOMTOM_API_KEY,
-          returnSpeedLimit: false,
-          language: 'pt-BR',
-        },
+    try {
+      const response = await axios.get(
+        `https://api.tomtom.com/search/2/reverseGeocode/${coords.lat},${coords.lon}.json`,
+        {
+          params: {
+            key: TOMTOM_API_KEY,
+            returnSpeedLimit: false,
+            language: 'pt-BR',
+          },
+        }
+      );
+
+      const address = response.data.addresses?.[0]?.address?.freeformAddress;
+
+      if (address) {
+        setOrigin(address);
+        window.__lastOriginAddress = address;
       }
-    );
-
-    const address = response.data.addresses?.[0]?.address?.freeformAddress;
-
-    if (address) {
-      setOrigin(address);
-      window.__lastOriginAddress = address;
+    } catch (error) {
+      console.warn('Não foi possível buscar o endereço do local escolhido:', error?.message || error);
     }
-  } catch (error) {
-    console.warn('Não foi possível buscar o endereço do local escolhido:', error?.message || error);
-  }
-};
+  };
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
@@ -2574,77 +2574,77 @@ function App() {
   };
 
   const handleOpenMapPicker = () => {
-  setShowPickerMap(true);
-  setPickingLocation(true);
-};
+    setShowPickerMap(true);
+    setPickingLocation(true);
+  };
 
-const handleSearch = async () => {
-  const safeO = sanitizeInput(origin);
-  const safeD = sanitizeInput(destination);
-  const originIsLine = isBusLineSearch(safeO);
-  const destinationIsLine = isBusLineSearch(safeD);
+  const handleSearch = async () => {
+    const safeO = sanitizeInput(origin);
+    const safeD = sanitizeInput(destination);
+    const originIsLine = isBusLineSearch(safeO);
+    const destinationIsLine = isBusLineSearch(safeD);
 
-  setHasSearched(true);
-  setLineDirectionFilter('all');
+    setHasSearched(true);
+    setLineDirectionFilter('all');
 
-  // Fecha o mapa inicial assim que o usuário clicar em "Buscar rota agora"
-  setShowPickerMap(false);
-  setPickingLocation(false);
+    // Fecha o mapa inicial assim que o usuário clicar em "Buscar rota agora"
+    setShowPickerMap(false);
+    setPickingLocation(false);
 
-  if (selectedMode === 'bus') {
-    // Consulta por linha pura.
-    // Importante: se os dois campos forem números de linha, usa o primeiro campo
-    // e NÃO tenta tratar o segundo como destino/parada.
-    if (originIsLine && (!safeD || destinationIsLine)) {
-      setDestination('');
-      await searchBusLine(safeO, `Linha ${safeO}`, 'Consulta de linha');
-      return;
+    if (selectedMode === 'bus') {
+      // Consulta por linha pura.
+      // Importante: se os dois campos forem números de linha, usa o primeiro campo
+      // e NÃO tenta tratar o segundo como destino/parada.
+      if (originIsLine && (!safeD || destinationIsLine)) {
+        setDestination('');
+        await searchBusLine(safeO, `Linha ${safeO}`, 'Consulta de linha');
+        return;
+      }
+
+      if (destinationIsLine && !safeO) {
+        setOrigin(safeD);
+        setDestination('');
+        await searchBusLine(safeD, `Linha ${safeD}`, 'Consulta de linha');
+        return;
+      }
+
+      // Linha + destino: exemplo "401" -> "Rodoviária".
+      if (originIsLine && safeD && !destinationIsLine) {
+        await searchBusLineWithDestination(safeO, safeD);
+        return;
+      }
+
+      // Origem + linha: exemplo "EPCT 85.3 Sul" -> "401".
+      if (safeO && !originIsLine && destinationIsLine) {
+        await searchBusLineFromOrigin(safeD, safeO);
+        return;
+      }
     }
 
-    if (destinationIsLine && !safeO) {
-      setOrigin(safeD);
-      setDestination('');
-      await searchBusLine(safeD, `Linha ${safeD}`, 'Consulta de linha');
-      return;
+    if (!safeO || !safeD) return;
+
+    if (pickedLocation) {
+      window.__lastOriginCoords = pickedLocation;
+      window.__lastOriginAddress = safeO || 'Local escolhido no mapa';
     }
 
-    // Linha + destino: exemplo "401" -> "Rodoviária".
-    if (originIsLine && safeD && !destinationIsLine) {
-      await searchBusLineWithDestination(safeO, safeD);
-      return;
-    }
+    await searchRoute(safeO, safeD, selectedMode);
+  };
 
-    // Origem + linha: exemplo "EPCT 85.3 Sul" -> "401".
-    if (safeO && !originIsLine && destinationIsLine) {
-      await searchBusLineFromOrigin(safeD, safeO);
-      return;
-    }
-  }
+  const lineSearchActive = routes.some((route) => route.isLineSearch);
+  const visibleRoutes = lineSearchActive && lineDirectionFilter !== 'all'
+    ? routes.filter((route) => (route.directionType || 'indefinido') === lineDirectionFilter)
+    : routes;
 
-  if (!safeO || !safeD) return;
-
-  if (pickedLocation) {
-    window.__lastOriginCoords = pickedLocation;
-    window.__lastOriginAddress = safeO || 'Local escolhido no mapa';
-  }
-
-  await searchRoute(safeO, safeD, selectedMode);
-};
-
-const lineSearchActive = routes.some((route) => route.isLineSearch);
-const visibleRoutes = lineSearchActive && lineDirectionFilter !== 'all'
-  ? routes.filter((route) => (route.directionType || 'indefinido') === lineDirectionFilter)
-  : routes;
-
-const safeOriginForSearch = sanitizeInput(origin);
-const safeDestinationForSearch = sanitizeInput(destination);
-const canSearch = selectedMode === 'bus'
-  ? Boolean(
+  const safeOriginForSearch = sanitizeInput(origin);
+  const safeDestinationForSearch = sanitizeInput(destination);
+  const canSearch = selectedMode === 'bus'
+    ? Boolean(
       (safeOriginForSearch && safeDestinationForSearch) ||
       isBusLineSearch(safeOriginForSearch) ||
       isBusLineSearch(safeDestinationForSearch)
     )
-  : Boolean(safeOriginForSearch && safeDestinationForSearch);
+    : Boolean(safeOriginForSearch && safeDestinationForSearch);
 
 
   return (
@@ -2704,13 +2704,13 @@ const canSearch = selectedMode === 'bus'
 
       {/* SEARCH */}
       <div ref={searchRef} className="max-w-2xl mx-auto px-4 -mt-14 md:-mt-20 pb-24 relative z-10">
-<motion.div
-  initial={{ opacity: 0, y: 24 }}
-  animate={{ opacity: 1, y: 0 }}
-  transition={{ delay: 0.1, ...spring }}
-  className="bg-[var(--card-bg)] backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-2xl border border-[var(--border)] overflow-visible"
->
-  <div className="px-6 md:px-8 py-4 md:py-5 border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent)]/5 to-transparent">
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1, ...spring }}
+          className="bg-[var(--card-bg)] backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-2xl border border-[var(--border)] overflow-visible"
+        >
+          <div className="px-6 md:px-8 py-4 md:py-5 border-b border-[var(--border)] bg-gradient-to-r from-[var(--accent)]/5 to-transparent">
             <h2 className="text-base md:text-lg font-semibold text-[var(--text-primary)] tracking-tight">Planeje sua rota</h2>
             <p className="text-xs md:text-sm text-[var(--text-secondary)] mt-0.5">Busque por ônibus, metrô e caminhada</p>
           </div>
@@ -2718,73 +2718,73 @@ const canSearch = selectedMode === 'bus'
           <div className="p-6 md:p-8">
             <div className="relative z-[5000] space-y-3">
               <LocationInput
-  value={origin}
-  onChange={setOrigin}
-  placeholder="Ponto de partida ou número da linha"
-  icon={MapPin}
-  onDetectLocation={() => detectLocation(setOrigin)}
-  detectingLocation={locationLoading}
-  onMapPickClick={handleOpenMapPicker}
-  showMapPickButton={!showPickerMap}
-/>
+                value={origin}
+                onChange={setOrigin}
+                placeholder="Ponto de partida ou número da linha"
+                icon={MapPin}
+                onDetectLocation={() => detectLocation(setOrigin)}
+                detectingLocation={locationLoading}
+                onMapPickClick={handleOpenMapPicker}
+                showMapPickButton={!showPickerMap}
+              />
               <LocationInput
-  value={destination}
-  onChange={setDestination}
-  placeholder="Destino ou número da linha"
-  icon={Search}
-  onDetectLocation={() => detectLocation(setDestination)}
-  detectingLocation={locationLoading}
-/>
+                value={destination}
+                onChange={setDestination}
+                placeholder="Destino ou número da linha"
+                icon={Search}
+                onDetectLocation={() => detectLocation(setDestination)}
+                detectingLocation={locationLoading}
+              />
             </div>
-<AnimatePresence initial={false}>
-  {showPickerMap && (
-    <motion.div
-      key="picker-map"
-      initial={{
-        opacity: 0,
-        height: 0,
-        y: -8,
-        scale: 0.98,
-      }}
-      animate={{
-        opacity: 1,
-        height: 320,
-        y: 0,
-        scale: 1,
-      }}
-      exit={{
-        opacity: 0,
-        height: 0,
-        y: -10,
-        scale: 0.97,
-      }}
-      transition={{
-        duration: 0.35,
-        ease: [0.22, 1, 0.36, 1],
-      }}
-      className="relative z-0 mt-4 overflow-hidden rounded-2xl border border-[var(--border)]"
-    >
-      <LeafletMap
-        center={
-          pickedLocation
-            ? [pickedLocation.lon, pickedLocation.lat]
-            : [-47.8828, -15.7939]
-        }
-        markers={[]}
-        routes={[]}
-        userPosition={userLocationCoords}
-        selectedRouteId={null}
-        height={320}
-        isDark={dark}
-        allStops={allDfStops}
-        pickedLocation={pickedLocation}
-        onPickLocation={handlePickLocation}
-        pickingLocation={pickingLocation}
-        onTogglePickingLocation={() => setPickingLocation((value) => !value)}
-      />
-    </motion.div>
-  )}
-</AnimatePresence>
+            <AnimatePresence initial={false}>
+              {showPickerMap && (
+                <motion.div
+                  key="picker-map"
+                  initial={{
+                    opacity: 0,
+                    height: 0,
+                    y: -8,
+                    scale: 0.98,
+                  }}
+                  animate={{
+                    opacity: 1,
+                    height: 320,
+                    y: 0,
+                    scale: 1,
+                  }}
+                  exit={{
+                    opacity: 0,
+                    height: 0,
+                    y: -10,
+                    scale: 0.97,
+                  }}
+                  transition={{
+                    duration: 0.35,
+                    ease: [0.22, 1, 0.36, 1],
+                  }}
+                  className="relative z-0 mt-4 overflow-hidden rounded-2xl border border-[var(--border)]"
+                >
+                  <LeafletMap
+                    center={
+                      pickedLocation
+                        ? [pickedLocation.lon, pickedLocation.lat]
+                        : [-47.8828, -15.7939]
+                    }
+                    markers={[]}
+                    routes={[]}
+                    userPosition={userLocationCoords}
+                    selectedRouteId={null}
+                    height={320}
+                    isDark={dark}
+                    allStops={allDfStops}
+                    pickedLocation={pickedLocation}
+                    onPickLocation={handlePickLocation}
+                    pickingLocation={pickingLocation}
+                    onTogglePickingLocation={() => setPickingLocation((value) => !value)}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <div className="mt-6">
               <p className="text-[10px] font-semibold text-[var(--text-tertiary)] uppercase tracking-widest mb-3">Tipo de transporte</p>
@@ -2817,29 +2817,29 @@ const canSearch = selectedMode === 'bus'
               {loading ? <><Loader2 className="h-4 w-4 animate-spin" />Buscando rota…</> : 'Buscar rota agora'}
             </motion.button>
 
-{(hasSearched || routes.length > 0) && (
-  <>
-    <LineDirectionFilter
-      routes={routes}
-      activeFilter={lineDirectionFilter}
-      onChange={setLineDirectionFilter}
-    />
+            {(hasSearched || routes.length > 0) && (
+              <>
+                <LineDirectionFilter
+                  routes={routes}
+                  activeFilter={lineDirectionFilter}
+                  onChange={setLineDirectionFilter}
+                />
 
-    <RouteResultRefatorado
-      routes={visibleRoutes}
-    origin={origin}
-    destination={destination}
-    loading={loading}
-    userLocation={userLocationCoords}
-    isDark={dark}
-    allDfStops={allDfStops}
-    pickedLocation={pickedLocation}
-    onPickLocation={handlePickLocation}
-    pickingLocation={pickingLocation}
-      onTogglePickingLocation={() => setPickingLocation((value) => !value)}
-    />
-  </>
-)}
+                <RouteResultRefatorado
+                  routes={visibleRoutes}
+                  origin={origin}
+                  destination={destination}
+                  loading={loading}
+                  userLocation={userLocationCoords}
+                  isDark={dark}
+                  allDfStops={allDfStops}
+                  pickedLocation={pickedLocation}
+                  onPickLocation={handlePickLocation}
+                  pickingLocation={pickingLocation}
+                  onTogglePickingLocation={() => setPickingLocation((value) => !value)}
+                />
+              </>
+            )}
 
             {error && (
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
@@ -2858,14 +2858,14 @@ const canSearch = selectedMode === 'bus'
         </motion.div>
       </div>
 
-<footer className="pb-8 text-center">
-  <p className="text-[11px] font-semibold tracking-wide text-[var(--text-tertiary)]">
-    LocalizaBus — Mobilidade urbana inteligente
-  </p>
-  <p className="mt-1 text-[10px] text-[var(--text-tertiary)]/70">
-    Transporte público do Distrito Federal em tempo real
-  </p>
-</footer>
+      <footer className="pb-8 text-center">
+        <p className="text-[11px] font-semibold tracking-wide text-[var(--text-tertiary)]">
+          LocalizaBus — Mobilidade urbana inteligente
+        </p>
+        <p className="mt-1 text-[10px] text-[var(--text-tertiary)]/70">
+          Transporte público do Distrito Federal em tempo real
+        </p>
+      </footer>
     </div>
   );
 }
