@@ -735,227 +735,216 @@ const onGPS = useCallback(pos => {
   const destName = destRef.current?.name || route.fromStop || route.destination || 'Destino';
   const destCoords = destRef.current;
 
-  // ─── Design tokens: adapta dark/light ────────────────────────────────────
-  const C = '#00d5ff';
-  const routeBlue = isDrivingMode ? '#2563eb' : '#06b6d4';
+  // ─── Design tokens premium ────────────────────────────────────────────────
+  const accent = isDrivingMode ? '#0A84FF' : '#30D158';
+  const accentSoft = isDrivingMode ? 'rgba(10,132,255,0.14)' : 'rgba(48,209,88,0.14)';
+  const accentBorder = isDrivingMode ? 'rgba(10,132,255,0.28)' : 'rgba(48,209,88,0.28)';
 
-  // ✅ FIX: cores do painel inferior com contraste correto dark vs light
-  const panelBg = isDark ? 'rgba(5,8,16,0.96)' : 'rgba(255,255,255,0.96)';
-  const panelBorder = isDark ? '1px solid rgba(0,213,255,0.12)' : '1px solid rgba(0,0,0,0.08)';
-  const panelText = isDark ? '#ffffff' : '#111827';
-  const panelSubText = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(17,24,39,0.55)';
-  const panelAccent = isDark ? 'rgba(0,243,255,0.04)' : 'rgba(0,0,0,0.04)';
-  const panelAccentBorder = isDark ? '1px solid rgba(0,243,255,0.09)' : '1px solid rgba(0,0,0,0.08)';
-  const panelLabelColor = isDark ? 'rgba(0,213,255,0.65)' : 'rgba(37,99,235,0.75)';
+  const glass = isDark
+    ? 'rgba(28,28,30,0.82)'
+    : 'rgba(255,255,255,0.88)';
+  const glassBorder = isDark
+    ? '1px solid rgba(255,255,255,0.09)'
+    : '1px solid rgba(0,0,0,0.07)';
+  const glassShadow = isDark
+    ? '0 20px 56px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06)'
+    : '0 20px 48px rgba(0,0,0,0.10), inset 0 1px 0 rgba(255,255,255,0.8)';
+  const textPrimary = isDark ? '#F5F5F7' : '#1D1D1F';
+  const textSecondary = isDark ? 'rgba(245,245,247,0.55)' : 'rgba(29,29,31,0.50)';
+  const wrapperBg = isDark ? '#000000' : '#F2F2F7';
 
-  const neon = {
-    border: isDark ? '1px solid rgba(0,213,255,0.28)' : '1px solid rgba(37,99,235,0.18)',
-    background: isDark ? 'linear-gradient(135deg,rgba(0,213,255,0.10),rgba(37,99,235,0.22))' : 'linear-gradient(135deg,#eff6ff,#dbeafe)',
-    boxShadow: isDark ? '0 10px 26px rgba(0,0,0,0.28)' : '0 10px 22px rgba(37,99,235,0.12)',
-    color: isDark ? '#dffcff' : '#1d4ed8', fontWeight: 800, borderRadius: 18,
+  const pillBtn = {
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    width: 44, height: 44, borderRadius: 22,
+    background: glass,
+    border: glassBorder,
+    backdropFilter: 'blur(20px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+    boxShadow: isDark ? '0 6px 20px rgba(0,0,0,0.45)' : '0 4px 14px rgba(0,0,0,0.10)',
+    color: textPrimary, cursor: 'pointer',
   };
 
-  // Fundo do wrapper: dark=escuro, light=claro neutro
-  const wrapperBg = isDark ? '#050810' : '#f1f5f9';
+  const primaryBtn = {
+    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    gap: 8, padding: '16px 20px',
+    borderRadius: 16,
+    background: accent,
+    border: 'none',
+    boxShadow: `0 8px 24px ${accentBorder.replace('0.28)', '0.42)')}`,
+    color: '#fff', fontWeight: 700, fontSize: 16,
+    letterSpacing: '-0.2px',
+    cursor: 'pointer',
+    fontFamily: '-apple-system, "SF Pro Display", BlinkMacSystemFont, sans-serif',
+  };
 
   return (
-    <div ref={wrapRef} style={{ position: 'fixed', inset: 0, zIndex: 2147483647, background: wrapperBg, display: 'flex', flexDirection: 'column' }}>
+    <div ref={wrapRef} style={{
+      position: 'fixed', inset: 0, zIndex: 2147483647,
+      background: wrapperBg, display: 'flex', flexDirection: 'column',
+      fontFamily: '-apple-system, "SF Pro Display", BlinkMacSystemFont, "Helvetica Neue", sans-serif',
+    }}>
+      <style>{`
+        @keyframes spinClean { to { transform: rotate(360deg); } }
+        @keyframes pulseRing {
+          0% { transform: scale(0.85); opacity: 0.6; }
+          100% { transform: scale(1.55); opacity: 0; }
+        }
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
 
-      /* ─── MAPA ─────────────────────────────────────────────────────── */
+      {/* ─── MAPA ──────────────────────────────────────────────────────── */}
       <div ref={mapElRef} style={{ flex: 1, width: '100%', position: 'relative', minHeight: 0 }}>
 
-        /* Loading spinner */
+        {/* Loading */}
         {loading && (
           <div style={{
-            position: 'absolute', inset: 0, zIndex: 10, display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center',
-            background: isDark ? '#050810' : '#f1f5f9', gap: 16
+            position: 'absolute', inset: 0, zIndex: 10,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            background: wrapperBg, gap: 18,
           }}>
-            <div style={{ position: 'relative', width: 64, height: 64 }}>
+            <div style={{ position: 'relative', width: 72, height: 72 }}>
               <div style={{
                 position: 'absolute', inset: 0, borderRadius: '50%',
-                border: '2px solid transparent', borderTopColor: C,
-                borderRightColor: isDark ? 'rgba(0,243,255,0.3)' : 'rgba(0,80,200,0.2)',
-                animation: 'spinNeon 1.2s linear infinite',
-                boxShadow: `0 0 18px rgba(0,243,255,0.4)`
+                border: `2px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
               }} />
               <div style={{
-                position: 'absolute', inset: 8, borderRadius: '50%',
-                background: isDark ? 'rgba(0,243,255,0.06)' : 'rgba(0,80,200,0.08)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                position: 'absolute', inset: 0, borderRadius: '50%',
+                border: '2px solid transparent',
+                borderTopColor: accent,
+                animation: 'spinClean 0.9s linear infinite',
+              }} />
+              <div style={{
+                position: 'absolute', inset: 10, borderRadius: '50%',
+                background: accentSoft,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
                 {navigationMode === 'car' ? (
-                  <Car style={{ color: C, width: 22, height: 22 }} />
+                  <Car style={{ color: accent, width: 22, height: 22 }} />
                 ) : navigationMode === 'motorcycle' ? (
-                  <Bike style={{ color: C, width: 22, height: 22 }} />
+                  <Bike style={{ color: accent, width: 22, height: 22 }} />
                 ) : (
-                  <Footprints style={{ color: C, width: 22, height: 22 }} />
+                  <Footprints style={{ color: accent, width: 22, height: 22 }} />
                 )}
               </div>
             </div>
-            <p style={{
-              color: C, fontSize: 13, fontWeight: 700, letterSpacing: 1,
-              textShadow: isDark ? `0 0 12px rgba(0,243,255,0.6)` : 'none'
-            }}>{loadMsg}</p>
-            <p style={{ color: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.4)', fontSize: 11 }}>Mapbox GL · Navegação {modeLabel} 3D</p>
-            <style>{`@keyframes spinNeon{to{transform:rotate(360deg)}}`}</style>
+            <div style={{ textAlign: 'center' }}>
+              <p style={{
+                color: textPrimary, fontSize: 15, fontWeight: 600,
+                letterSpacing: '-0.3px', margin: 0,
+              }}>{loadMsg}</p>
+              <p style={{ color: textSecondary, fontSize: 12, margin: '5px 0 0' }}>
+                Navegação {modeLabel}
+              </p>
+            </div>
           </div>
         )}
 
-        /* Erro */
+        {/* Erro */}
         {err && !loading && (
           <div style={{
-            position: 'absolute', inset: 0, zIndex: 10, display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center',
-            background: isDark ? '#050810' : '#f1f5f9', gap: 12, padding: 24
+            position: 'absolute', inset: 0, zIndex: 10,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            background: wrapperBg, gap: 14, padding: 28,
           }}>
-            <MapPin style={{ color: '#ff453a', width: 40, height: 40 }} />
-            <p style={{ color: '#ff6b6b', fontSize: 14, textAlign: 'center', maxWidth: 300 }}>{err}</p>
-            <button onClick={onClose}
-              style={{ marginTop: 8, padding: '12px 28px', cursor: 'pointer', border: 'none', ...neon, fontSize: 14 }}>
+            <div style={{
+              width: 64, height: 64, borderRadius: 32,
+              background: isDark ? 'rgba(255,69,58,0.12)' : '#FFF2F1',
+              border: '1px solid rgba(255,69,58,0.22)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <MapPin style={{ color: '#FF453A', width: 28, height: 28 }} />
+            </div>
+            <p style={{
+              color: textPrimary, fontSize: 15, fontWeight: 600,
+              textAlign: 'center', maxWidth: 280, margin: 0, lineHeight: 1.45,
+            }}>{err}</p>
+            <motion.button whileTap={{ scale: 0.96 }} onClick={onClose}
+              style={{
+                marginTop: 4, padding: '13px 28px',
+                borderRadius: 14, border: 'none',
+                background: accent, color: '#fff',
+                fontWeight: 600, fontSize: 15, cursor: 'pointer',
+                boxShadow: `0 6px 18px ${accentBorder.replace('0.28)', '0.38)')}`,
+                fontFamily: 'inherit',
+              }}>
               Fechar
-            </button>
+            </motion.button>
           </div>
         )}
 
-        /* HUD instrução estilo Apple/iOS */
+        {/* HUD instrução */}
         <AnimatePresence>
           {nav && !overview && curI && !arrived && (
             <motion.div
               key="instr"
-              initial={{ y: -90, opacity: 0, scale: 0.98 }}
-              animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: -90, opacity: 0, scale: 0.98 }}
-              transition={{ type: "spring", stiffness: 220, damping: 24 }}
+              initial={{ y: -80, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -80, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 28 }}
               style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                zIndex: 20,
-                padding: "max(env(safe-area-inset-top,0px),14px) 14px 0",
-                pointerEvents: "none",
+                position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
+                padding: 'max(env(safe-area-inset-top,0px),14px) 14px 0',
+                pointerEvents: 'none',
               }}
             >
-              <div
-                style={{
-                  maxWidth: 860,
-                  margin: "0 auto",
-                  background: isDark
-                    ? "rgba(12,17,27,0.78)"
-                    : "rgba(255,255,255,0.82)",
-                  border: isDark
-                    ? "1px solid rgba(255,255,255,0.10)"
-                    : "1px solid rgba(15,23,42,0.08)",
-                  borderRadius: 28,
-                  backdropFilter: "blur(26px) saturate(170%)",
-                  WebkitBackdropFilter: "blur(26px) saturate(170%)",
-                  boxShadow: isDark
-                    ? "0 18px 48px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)"
-                    : "0 18px 42px rgba(15,23,42,0.13), inset 0 1px 0 rgba(255,255,255,0.75)",
-                  overflow: "hidden",
-                  pointerEvents: "auto",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 14,
-                    padding: "14px 16px 12px",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 54,
-                      height: 54,
-                      borderRadius: 18,
-                      background: "linear-gradient(180deg, #3478F6, #1D4ED8)",
-                      boxShadow: "0 10px 24px rgba(37,99,235,0.34)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <ManIcon type={curI.man} size={29} />
+              <div style={{
+                maxWidth: 860, margin: '0 auto',
+                background: glass,
+                border: glassBorder,
+                borderRadius: 22,
+                backdropFilter: 'blur(28px) saturate(180%)',
+                WebkitBackdropFilter: 'blur(28px) saturate(180%)',
+                boxShadow: glassShadow,
+                overflow: 'hidden',
+                pointerEvents: 'auto',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 16px 14px' }}>
+                  <div style={{
+                    width: 52, height: 52, borderRadius: 16,
+                    background: accent,
+                    boxShadow: `0 8px 20px ${accentBorder.replace('0.28)', '0.40)')}`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  }}>
+                    <ManIcon type={curI.man} size={26} />
                   </div>
-
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p
-                      style={{
-                        color: isDark ? "#F8FAFC" : "#0F172A",
-                        fontSize: 23,
-                        fontWeight: 850,
-                        lineHeight: 1.08,
-                        letterSpacing: "-0.45px",
-                        margin: 0,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                    <p style={{
+                      color: textPrimary, fontSize: 21, fontWeight: 700,
+                      lineHeight: 1.1, letterSpacing: '-0.5px', margin: 0,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
                       {curI.msg}
                     </p>
-
                     {nextI && (
-                      <p
-                        style={{
-                          color: isDark
-                            ? "rgba(248,250,252,0.56)"
-                            : "rgba(15,23,42,0.56)",
-                          fontSize: 13,
-                          fontWeight: 650,
-                          margin: "6px 0 0",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        Depois: {nextI.msg}
+                      <p style={{
+                        color: textSecondary, fontSize: 13, fontWeight: 500,
+                        margin: '5px 0 0',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        Em seguida: {nextI.msg}
                       </p>
                     )}
                   </div>
-
-                  <button
-                    onClick={toggleOverview}
-                    style={{
-                      height: 38,
-                      padding: "0 14px",
-                      borderRadius: 999,
-                      border: isDark
-                        ? "1px solid rgba(255,255,255,0.10)"
-                        : "1px solid rgba(15,23,42,0.08)",
-                      background: isDark
-                        ? "rgba(255,255,255,0.07)"
-                        : "rgba(15,23,42,0.04)",
-                      color: isDark ? "rgba(255,255,255,0.78)" : "#334155",
-                      fontSize: 12,
-                      fontWeight: 800,
-                      cursor: "pointer",
-                      backdropFilter: "blur(14px)",
-                    }}
-                  >
+                  <button onClick={toggleOverview} style={{
+                    height: 34, padding: '0 13px', borderRadius: 999,
+                    border: glassBorder,
+                    background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+                    backdropFilter: 'blur(12px)',
+                    color: textSecondary, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    fontFamily: 'inherit', whiteSpace: 'nowrap',
+                  }}>
                     Visão geral
                   </button>
                 </div>
-
-                <div
-                  style={{
-                    height: 3,
-                    background: isDark
-                      ? "rgba(255,255,255,0.08)"
-                      : "rgba(15,23,42,0.08)",
-                  }}
-                >
+                {/* Progress bar */}
+                <div style={{ height: 2, background: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)' }}>
                   <motion.div
                     animate={{ width: `${pct}%` }}
-                    transition={{ duration: 0.55 }}
-                    style={{
-                      height: "100%",
-                      background: "linear-gradient(90deg, #60A5FA, #2563EB)",
-                      boxShadow: "0 0 12px rgba(37,99,235,0.45)",
-                    }}
+                    transition={{ duration: 0.6 }}
+                    style={{ height: '100%', background: accent }}
                   />
                 </div>
               </div>
@@ -963,184 +952,212 @@ const onGPS = useCallback(pos => {
           )}
         </AnimatePresence>
 
-        /* Fechar */
+        {/* Botão fechar */}
         <motion.button whileTap={{ scale: 0.88 }} onClick={nav ? stopNav : onClose}
           style={{
-            position: 'absolute', top: 'max(env(safe-area-inset-top,0px),14px)', left: 14,
-            zIndex: 30, width: 42, height: 42, borderRadius: 21,
-            background: isDark ? 'rgba(5,8,16,0.8)' : 'rgba(255,255,255,0.85)',
-            backdropFilter: 'blur(14px)',
-            border: isDark ? '1px solid rgba(0,243,255,0.25)' : '1px solid rgba(0,0,0,0.12)',
-            color: isDark ? '#fff' : '#111827',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.3)'
+            ...pillBtn,
+            position: 'absolute', top: 'max(env(safe-area-inset-top,0px),14px)', left: 14, zIndex: 30,
           }}>
-          <X style={{ width: 17, height: 17 }} />
+          <X style={{ width: 16, height: 16 }} strokeWidth={2.5} />
         </motion.button>
 
-        /* Fullscreen */
+        {/* Botão fullscreen */}
         <motion.button whileTap={{ scale: 0.88 }} onClick={toggleFullscreen}
           style={{
-            position: 'absolute', top: 'max(env(safe-area-inset-top,0px),14px)', right: 14,
-            zIndex: 30, width: 42, height: 42, borderRadius: 21,
-            background: isDark ? 'rgba(5,8,16,0.8)' : 'rgba(255,255,255,0.85)',
-            backdropFilter: 'blur(14px)',
-            border: isDark ? '1px solid rgba(0,243,255,0.25)' : '1px solid rgba(0,0,0,0.12)',
-            color: C,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+            ...pillBtn,
+            position: 'absolute', top: 'max(env(safe-area-inset-top,0px),14px)', right: 14, zIndex: 30,
+            color: accent,
           }}>
           {fs ? <Minimize2 style={{ width: 16, height: 16 }} /> : <Maximize2 style={{ width: 16, height: 16 }} />}
         </motion.button>
-        /* Badge GPS */
+
+        {/* Badge GPS */}
         {tracking && acc != null && (
           <div style={{
             position: 'absolute', bottom: nav ? 16 : 200, left: 14, zIndex: 20,
-            background: isDark ? 'rgba(5,8,16,0.8)' : 'rgba(255,255,255,0.85)',
-            backdropFilter: 'blur(14px)',
-            border: `1px solid ${acc < 20 ? 'rgba(0,243,255,0.5)' : acc < 50 ? 'rgba(251,191,36,0.4)' : 'rgba(248,113,113,0.4)'}`,
-            borderRadius: 99, padding: '4px 10px',
-            color: acc < 20 ? C : acc < 50 ? '#fbbf24' : '#f87171',
-            fontSize: 11, fontWeight: 700
+            background: glass,
+            backdropFilter: 'blur(16px)',
+            border: `1px solid ${acc < 20 ? accentBorder : acc < 50 ? 'rgba(255,159,10,0.32)' : 'rgba(255,69,58,0.32)'}`,
+            borderRadius: 20, padding: '5px 12px',
+            color: acc < 20 ? accent : acc < 50 ? '#FF9F0A' : '#FF453A',
+            fontSize: 11, fontWeight: 600, letterSpacing: '0.1px',
           }}>
             GPS ±{acc}m
           </div>
         )}
 
-        /* Chegou */
+        {/* Chegou */}
         <AnimatePresence>
           {arrived && (
             <motion.div key="arrived"
-              initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ opacity: 0 }}
+              initial={{ scale: 0.8, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 26 }}
               style={{
-                position: 'absolute', top: '35%', left: '50%', transform: 'translate(-50%,-50%)',
+                position: 'absolute', top: '35%', left: '50%',
+                transform: 'translate(-50%,-50%)',
                 zIndex: 40, textAlign: 'center',
-                background: isDark ? 'rgba(5,8,16,0.95)' : 'rgba(255,255,255,0.97)',
-                backdropFilter: 'blur(24px)',
-                border: '1.5px solid rgba(0,243,255,0.45)',
-                borderRadius: 24, padding: '28px 36px',
-                boxShadow: '0 16px 60px rgba(0,0,0,0.4),0 0 40px rgba(0,243,255,0.15)'
+                background: glass,
+                backdropFilter: 'blur(32px) saturate(180%)',
+                WebkitBackdropFilter: 'blur(32px) saturate(180%)',
+                border: glassBorder,
+                borderRadius: 28, padding: '32px 40px',
+                boxShadow: glassShadow,
+                minWidth: 220,
               }}>
-              <div style={{ fontSize: 48, marginBottom: 8 }}>🎉</div>
+              <div style={{
+                width: 64, height: 64, borderRadius: 32,
+                background: isDark ? 'rgba(48,209,88,0.12)' : '#F0FBF2',
+                border: '1px solid rgba(48,209,88,0.25)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                margin: '0 auto 14px',
+                fontSize: 32,
+              }}>🏁</div>
               <p style={{
-                color: C, fontSize: 22, fontWeight: 900, margin: 0,
-                textShadow: isDark ? `0 0 16px rgba(0,243,255,0.7)` : 'none'
+                color: textPrimary, fontSize: 20, fontWeight: 700,
+                letterSpacing: '-0.4px', margin: 0,
               }}>
                 {route.isWalk ? 'Chegou!' : 'Destino alcançado!'}
               </p>
-              <p style={{ color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.5)', fontSize: 13, marginTop: 6 }}>
+              <p style={{ color: textSecondary, fontSize: 13, marginTop: 6, marginBottom: 0 }}>
                 {dist(rd?.totalM || 0)} · {mins(elapsed)}
               </p>
-              <button onClick={stopNav}
-                style={{ marginTop: 16, padding: '12px 28px', cursor: 'pointer', border: 'none', ...neon, fontSize: 14 }}>
+              <motion.button whileTap={{ scale: 0.96 }} onClick={stopNav}
+                style={{
+                  marginTop: 18, padding: '12px 28px',
+                  borderRadius: 14, border: 'none',
+                  background: accent, color: '#fff',
+                  fontWeight: 600, fontSize: 15, cursor: 'pointer',
+                  boxShadow: `0 6px 18px ${accentBorder.replace('0.28)', '0.38)')}`,
+                  fontFamily: 'inherit',
+                }}>
                 Encerrar
-              </button>
+              </motion.button>
             </motion.div>
           )}
         </AnimatePresence>
 
-        /* ETA flutuante */
+        {/* ETA flutuante */}
         {nav && !overview && remain != null && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
             style={{
               position: 'absolute', bottom: 16, right: 14, zIndex: 20,
-              background: isDark ? 'rgba(5,8,16,0.85)' : 'rgba(255,255,255,0.9)',
-              backdropFilter: 'blur(14px)',
-              border: isDark ? '1px solid rgba(0,243,255,0.3)' : '1px solid rgba(0,0,0,0.1)',
-              borderRadius: 16, padding: '10px 16px', textAlign: 'right',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.2),0 0 16px rgba(0,243,255,0.08)'
+              background: glass,
+              backdropFilter: 'blur(20px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+              border: glassBorder,
+              borderRadius: 18, padding: '11px 17px', textAlign: 'right',
+              boxShadow: isDark ? '0 8px 28px rgba(0,0,0,0.4)' : '0 6px 22px rgba(0,0,0,0.09)',
             }}>
             <p style={{
-              color: C, fontSize: 22, fontWeight: 900, margin: 0, lineHeight: 1,
-              textShadow: isDark ? `0 0 12px rgba(0,243,255,0.6)` : 'none'
+              color: accent, fontSize: 22, fontWeight: 700,
+              letterSpacing: '-0.5px', margin: 0, lineHeight: 1,
             }}>{dist(remain)}</p>
-            <p style={{ color: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.45)', fontSize: 11, margin: '3px 0 0' }}>
+            <p style={{ color: textSecondary, fontSize: 11, fontWeight: 500, margin: '4px 0 0' }}>
               {eta != null ? mins(eta) : '—'}
             </p>
           </motion.div>
         )}
       </div>
 
-      /* ─── PAINEL INFERIOR CLEAN ───────────────────────────────────── */
+      {/* ─── PAINEL INFERIOR ─────────────────────────────────────────── */}
       <div style={{
-        background: panelBg,
-        borderTop: panelBorder,
+        background: glass,
+        borderTop: glassBorder,
+        backdropFilter: 'blur(28px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(28px) saturate(180%)',
         flexShrink: 0,
-        backdropFilter: 'blur(18px)',
-        transition: 'max-height 0.25s ease, opacity 0.25s ease',
-        maxHeight: nav && !bottomOpen ? 0 : 260,
+        transition: 'max-height 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease',
+        maxHeight: nav && !bottomOpen ? 0 : 300,
         opacity: nav && !bottomOpen ? 0 : 1,
-        overflow: 'hidden'
+        overflow: 'hidden',
+        boxShadow: isDark
+          ? 'inset 0 1px 0 rgba(255,255,255,0.07)'
+          : 'inset 0 1px 0 rgba(255,255,255,0.9)',
       }}>
+        {/* Sheet handle */}
         {nav && (
           <button onClick={() => setBottomOpen(v => !v)}
             style={{
-              width: '100%', display: 'flex', justifyContent: 'center', padding: '8px 0 4px',
-              background: 'transparent', border: 'none', cursor: 'pointer'
+              width: '100%', display: 'flex', justifyContent: 'center',
+              padding: '10px 0 6px', background: 'transparent', border: 'none', cursor: 'pointer',
             }}>
-            <div style={{ width: 38, height: 4, borderRadius: 99, background: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.14)' }} />
+            <div style={{
+              width: 36, height: 4, borderRadius: 99,
+              background: isDark ? 'rgba(255,255,255,0.20)' : 'rgba(0,0,0,0.12)',
+            }} />
           </button>
         )}
 
-        <div style={{ padding: nav ? '8px 18px 18px' : '14px 18px 18px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+        <div style={{ padding: nav ? '4px 18px 28px' : '18px 18px 28px' }}>
+          {/* Linha destino + distância */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 13, marginBottom: 14 }}>
             <div style={{
-              width: 38, height: 38, borderRadius: 14,
-              background: isDark ? 'rgba(0,213,255,0.08)' : '#eff6ff',
-              border: isDark ? '1px solid rgba(0,213,255,0.18)' : '1px solid rgba(37,99,235,0.14)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+              width: 42, height: 42, borderRadius: 14,
+              background: accentSoft,
+              border: `1px solid ${accentBorder}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
             }}>
-              <MapPin style={{ color: routeBlue, width: 18, height: 18 }} strokeWidth={2.4} />
+              <MapPin style={{ color: accent, width: 18, height: 18 }} strokeWidth={2.2} />
             </div>
 
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{
-                color: panelLabelColor, fontSize: 10, fontWeight: 800,
-                textTransform: 'uppercase', letterSpacing: 1.1, margin: 0
+                color: textSecondary, fontSize: 10, fontWeight: 600,
+                textTransform: 'uppercase', letterSpacing: 1.2, margin: 0,
               }}>Destino</p>
               <p style={{
-                color: panelText, fontSize: 14, fontWeight: 800, margin: '2px 0 0',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                color: textPrimary, fontSize: 15, fontWeight: 600,
+                letterSpacing: '-0.3px', margin: '3px 0 0',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>{destName}</p>
             </div>
 
             <div style={{ textAlign: 'right', flexShrink: 0 }}>
-              <p style={{ color: routeBlue, fontSize: 22, fontWeight: 900, margin: 0, lineHeight: 1 }}>
+              <p style={{
+                color: accent, fontSize: 24, fontWeight: 700,
+                letterSpacing: '-0.8px', margin: 0, lineHeight: 1,
+              }}>
                 {remain != null ? dist(remain) : '—'}
               </p>
-              <p style={{ color: panelSubText, fontSize: 11, margin: '3px 0 0', fontWeight: 700 }}>
+              <p style={{ color: textSecondary, fontSize: 12, margin: '3px 0 0', fontWeight: 500 }}>
                 {eta != null ? mins(eta) : '—'}
               </p>
             </div>
           </div>
 
-          <div style={{ height: 5, borderRadius: 99, background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)', overflow: 'hidden', marginBottom: 12 }}>
+          {/* Progress bar */}
+          <div style={{
+            height: 4, borderRadius: 99,
+            background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+            overflow: 'hidden', marginBottom: 16,
+          }}>
             <motion.div animate={{ width: `${pct}%` }} transition={{ duration: 0.55 }}
-              style={{ height: '100%', borderRadius: 99, background: routeBlue }} />
+              style={{ height: '100%', borderRadius: 99, background: accent }} />
           </div>
 
+          {/* Botões */}
           <div style={{ display: 'flex', gap: 10 }}>
             {!nav ? (
               <>
                 {isMobile && destCoords && (
-                  <motion.button whileTap={{ scale: 0.96 }}
+                  <motion.button whileTap={{ scale: 0.94 }}
                     onClick={() => openNativeNavigation(destCoords.lat, destCoords.lon, destName, navigationMode)}
                     style={{
-                      width: 58, height: 54, borderRadius: 18, flexShrink: 0,
-                      background: isDark ? 'rgba(255,255,255,0.06)' : '#f8fafc',
-                      border: isDark ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(0,0,0,0.08)',
-                      color: routeBlue, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                      width: 56, height: 54, borderRadius: 16, flexShrink: 0,
+                      background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                      border: glassBorder,
+                      color: accent,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
                     }} title="Abrir no Maps">
                     <Smartphone style={{ width: 20, height: 20 }} />
                   </motion.button>
                 )}
-                <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.97 }}
+                <motion.button whileTap={{ scale: 0.97 }}
                   onClick={startNav} disabled={!rd}
-                  style={{
-                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    gap: 10, padding: '15px 18px', cursor: rd ? 'pointer' : 'not-allowed', border: 'none',
-                    ...neon, opacity: rd ? 1 : 0.4, fontSize: 15
-                  }}>
-                  <Navigation style={{ width: 19, height: 19 }} strokeWidth={2.6} />
+                  style={{ ...primaryBtn, opacity: rd ? 1 : 0.4, cursor: rd ? 'pointer' : 'not-allowed' }}>
+                  <Navigation style={{ width: 18, height: 18 }} strokeWidth={2.5} />
                   Iniciar navegação
                 </motion.button>
               </>
@@ -1148,20 +1165,18 @@ const onGPS = useCallback(pos => {
               <motion.button whileTap={{ scale: 0.97 }} onClick={pauseNav}
                 style={{
                   flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  gap: 8, padding: '14px 18px', borderRadius: 18,
-                  background: isDark ? 'rgba(239,68,68,0.12)' : '#fef2f2',
-                  color: '#ef4444', fontWeight: 900, fontSize: 15,
-                  border: isDark ? '1px solid rgba(239,68,68,0.25)' : '1px solid rgba(239,68,68,0.16)', cursor: 'pointer'
+                  gap: 8, padding: '15px 20px', borderRadius: 16,
+                  background: isDark ? 'rgba(255,69,58,0.12)' : '#FFF2F1',
+                  color: '#FF453A', fontWeight: 600, fontSize: 15,
+                  border: '1px solid rgba(255,69,58,0.20)', cursor: 'pointer',
+                  fontFamily: 'inherit',
                 }}>
-                <Square style={{ width: 16, height: 16 }} fill="currentColor" />
+                <Square style={{ width: 15, height: 15 }} fill="currentColor" />
                 Pausar
               </motion.button>
             ) : (
               <motion.button whileTap={{ scale: 0.97 }} onClick={startNav}
-                style={{
-                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  gap: 8, padding: '14px 18px', cursor: 'pointer', border: 'none', ...neon, fontSize: 15
-                }}>
+                style={{ ...primaryBtn }}>
                 <Play style={{ width: 16, height: 16 }} fill="currentColor" />
                 Retomar
               </motion.button>
@@ -1170,13 +1185,13 @@ const onGPS = useCallback(pos => {
             {nav && (
               <motion.button whileTap={{ scale: 0.92 }} onClick={stopNav}
                 style={{
-                  width: 54, height: 54, borderRadius: 18, flexShrink: 0,
-                  background: isDark ? 'rgba(255,255,255,0.06)' : '#f8fafc',
-                  border: isDark ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(0,0,0,0.08)',
-                  color: isDark ? 'rgba(255,255,255,0.72)' : '#374151',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                  width: 54, height: 54, borderRadius: 16, flexShrink: 0,
+                  background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                  border: glassBorder,
+                  color: textSecondary,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
                 }} title="Encerrar navegação">
-                <RotateCcw style={{ width: 18, height: 18 }} />
+                <RotateCcw style={{ width: 17, height: 17 }} />
               </motion.button>
             )}
           </div>
