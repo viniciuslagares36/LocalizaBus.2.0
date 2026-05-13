@@ -645,6 +645,7 @@ const onGPS = useCallback(pos => {
 
     setErr(null);
 
+
     setNav(true);
     setTracking(true);
     setOverview(false);
@@ -760,10 +761,10 @@ const onGPS = useCallback(pos => {
   return (
     <div ref={wrapRef} style={{ position: 'fixed', inset: 0, zIndex: 2147483647, background: wrapperBg, display: 'flex', flexDirection: 'column' }}>
 
-      {/* ─── MAPA ─────────────────────────────────────────────────────── */}
+      /* ─── MAPA ─────────────────────────────────────────────────────── */
       <div ref={mapElRef} style={{ flex: 1, width: '100%', position: 'relative', minHeight: 0 }}>
 
-        {/* Loading spinner */}
+        /* Loading spinner */
         {loading && (
           <div style={{
             position: 'absolute', inset: 0, zIndex: 10, display: 'flex', flexDirection: 'column',
@@ -801,7 +802,7 @@ const onGPS = useCallback(pos => {
           </div>
         )}
 
-        {/* Erro */}
+        /* Erro */
         {err && !loading && (
           <div style={{
             position: 'absolute', inset: 0, zIndex: 10, display: 'flex', flexDirection: 'column',
@@ -817,54 +818,152 @@ const onGPS = useCallback(pos => {
           </div>
         )}
 
-        {/* HUD instrução */}
+        /* HUD instrução estilo Apple/iOS */
         <AnimatePresence>
           {nav && !overview && curI && !arrived && (
-            <motion.div key="instr"
-              initial={{ y: -100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -100, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 200, damping: 22 }}
+            <motion.div
+              key="instr"
+              initial={{ y: -90, opacity: 0, scale: 0.98 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: -90, opacity: 0, scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 220, damping: 24 }}
               style={{
-                position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
-                paddingTop: 'max(env(safe-area-inset-top,0px),12px)'
-              }}>
-              <div style={{
-                margin: '0 12px',
-                background: isDark ? 'rgba(6,12,22,0.92)' : 'rgba(255,255,255,0.94)',
-                borderRadius: 22, border: isDark ? '1px solid rgba(0,213,255,0.16)' : '1px solid rgba(0,0,0,0.08)',
-                backdropFilter: 'blur(18px)',
-                boxShadow: '0 14px 36px rgba(0,0,0,0.25)', padding: '14px 16px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <div style={{
-                    width: 56, height: 56, borderRadius: 14,
-                    background: routeBlue, border: '1px solid rgba(255,255,255,0.18)',
-                    flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'
-                  }}>
-                    <ManIcon type={curI.man} size={28} />
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                zIndex: 20,
+                padding: "max(env(safe-area-inset-top,0px),14px) 14px 0",
+                pointerEvents: "none",
+              }}
+            >
+              <div
+                style={{
+                  maxWidth: 860,
+                  margin: "0 auto",
+                  background: isDark
+                    ? "rgba(12,17,27,0.78)"
+                    : "rgba(255,255,255,0.82)",
+                  border: isDark
+                    ? "1px solid rgba(255,255,255,0.10)"
+                    : "1px solid rgba(15,23,42,0.08)",
+                  borderRadius: 28,
+                  backdropFilter: "blur(26px) saturate(170%)",
+                  WebkitBackdropFilter: "blur(26px) saturate(170%)",
+                  boxShadow: isDark
+                    ? "0 18px 48px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)"
+                    : "0 18px 42px rgba(15,23,42,0.13), inset 0 1px 0 rgba(255,255,255,0.75)",
+                  overflow: "hidden",
+                  pointerEvents: "auto",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 14,
+                    padding: "14px 16px 12px",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 54,
+                      height: 54,
+                      borderRadius: 18,
+                      background: "linear-gradient(180deg, #3478F6, #1D4ED8)",
+                      boxShadow: "0 10px 24px rgba(37,99,235,0.34)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <ManIcon type={curI.man} size={29} />
                   </div>
+
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    {/* ✅ FIX: curI.msg já foi limpo de tags HTML no getRoute */}
-                    <p style={{
-                      color: isDark ? '#fff' : '#111827', fontSize: 20, fontWeight: 800, lineHeight: 1.2, margin: 0,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-                    }}>{curI.msg}</p>
-                    {nextI && <p style={{
-                      color: isDark ? 'rgba(255,255,255,0.60)' : 'rgba(17,24,39,0.58)', fontSize: 12, margin: '4px 0 0',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-                    }}>
-                      Depois: {nextI.msg}</p>}
+                    <p
+                      style={{
+                        color: isDark ? "#F8FAFC" : "#0F172A",
+                        fontSize: 23,
+                        fontWeight: 850,
+                        lineHeight: 1.08,
+                        letterSpacing: "-0.45px",
+                        margin: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {curI.msg}
+                    </p>
+
+                    {nextI && (
+                      <p
+                        style={{
+                          color: isDark
+                            ? "rgba(248,250,252,0.56)"
+                            : "rgba(15,23,42,0.56)",
+                          fontSize: 13,
+                          fontWeight: 650,
+                          margin: "6px 0 0",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        Depois: {nextI.msg}
+                      </p>
+                    )}
                   </div>
+
+                  <button
+                    onClick={toggleOverview}
+                    style={{
+                      height: 38,
+                      padding: "0 14px",
+                      borderRadius: 999,
+                      border: isDark
+                        ? "1px solid rgba(255,255,255,0.10)"
+                        : "1px solid rgba(15,23,42,0.08)",
+                      background: isDark
+                        ? "rgba(255,255,255,0.07)"
+                        : "rgba(15,23,42,0.04)",
+                      color: isDark ? "rgba(255,255,255,0.78)" : "#334155",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      backdropFilter: "blur(14px)",
+                    }}
+                  >
+                    Visão geral
+                  </button>
                 </div>
-                <div style={{ marginTop: 10, height: 3, borderRadius: 99, background: 'rgba(0,243,255,0.15)', overflow: 'hidden' }}>
-                  <motion.div animate={{ width: `${pct}%` }} transition={{ duration: 0.6 }}
-                    style={{ height: '100%', borderRadius: 99, background: C, boxShadow: `0 0 8px rgba(0,243,255,0.8)` }} />
+
+                <div
+                  style={{
+                    height: 3,
+                    background: isDark
+                      ? "rgba(255,255,255,0.08)"
+                      : "rgba(15,23,42,0.08)",
+                  }}
+                >
+                  <motion.div
+                    animate={{ width: `${pct}%` }}
+                    transition={{ duration: 0.55 }}
+                    style={{
+                      height: "100%",
+                      background: "linear-gradient(90deg, #60A5FA, #2563EB)",
+                      boxShadow: "0 0 12px rgba(37,99,235,0.45)",
+                    }}
+                  />
                 </div>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Fechar */}
+        /* Fechar */
         <motion.button whileTap={{ scale: 0.88 }} onClick={nav ? stopNav : onClose}
           style={{
             position: 'absolute', top: 'max(env(safe-area-inset-top,0px),14px)', left: 14,
@@ -879,7 +978,7 @@ const onGPS = useCallback(pos => {
           <X style={{ width: 17, height: 17 }} />
         </motion.button>
 
-        {/* Fullscreen */}
+        /* Fullscreen */
         <motion.button whileTap={{ scale: 0.88 }} onClick={toggleFullscreen}
           style={{
             position: 'absolute', top: 'max(env(safe-area-inset-top,0px),14px)', right: 14,
@@ -892,27 +991,7 @@ const onGPS = useCallback(pos => {
           }}>
           {fs ? <Minimize2 style={{ width: 16, height: 16 }} /> : <Maximize2 style={{ width: 16, height: 16 }} />}
         </motion.button>
-
-        {/* Overview toggle */}
-        {nav && (
-          <motion.button whileTap={{ scale: 0.9 }} onClick={toggleOverview}
-            style={{
-              position: 'absolute', top: 'max(env(safe-area-inset-top,0px),14px)', right: 66,
-              zIndex: 30, height: 42, padding: '0 14px', borderRadius: 21,
-              background: overview
-                ? 'rgba(0,243,255,0.18)'
-                : isDark ? 'rgba(5,8,16,0.8)' : 'rgba(255,255,255,0.85)',
-              backdropFilter: 'blur(14px)',
-              border: `1px solid ${overview ? 'rgba(0,243,255,0.6)' : isDark ? 'rgba(0,243,255,0.25)' : 'rgba(0,0,0,0.12)'}`,
-              color: overview ? C : isDark ? 'rgba(255,255,255,0.7)' : '#374151',
-              fontSize: 12, fontWeight: 700, cursor: 'pointer',
-              boxShadow: overview ? `0 0 16px rgba(0,243,255,0.3)` : 'none'
-            }}>
-            {overview ? '3D ▲' : 'Visão geral'}
-          </motion.button>
-        )}
-
-        {/* Badge GPS */}
+        /* Badge GPS */
         {tracking && acc != null && (
           <div style={{
             position: 'absolute', bottom: nav ? 16 : 200, left: 14, zIndex: 20,
@@ -927,7 +1006,7 @@ const onGPS = useCallback(pos => {
           </div>
         )}
 
-        {/* Chegou */}
+        /* Chegou */
         <AnimatePresence>
           {arrived && (
             <motion.div key="arrived"
@@ -959,7 +1038,7 @@ const onGPS = useCallback(pos => {
           )}
         </AnimatePresence>
 
-        {/* ETA flutuante */}
+        /* ETA flutuante */
         {nav && !overview && remain != null && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
             style={{
@@ -981,213 +1060,126 @@ const onGPS = useCallback(pos => {
         )}
       </div>
 
-      {/* ─── PAINEL INFERIOR PREMIUM ───────────────────────────────────── */}
+      /* ─── PAINEL INFERIOR CLEAN ───────────────────────────────────── */
       <div style={{
-        background: isDark
-          ? 'linear-gradient(180deg, rgba(5,8,16,0.94), rgba(3,7,18,0.98))'
-          : 'rgba(255,255,255,0.96)',
-        borderTop: isDark
-          ? '1px solid rgba(0,213,255,0.14)'
-          : '1px solid rgba(0,0,0,0.08)',
+        background: panelBg,
+        borderTop: panelBorder,
         flexShrink: 0,
-        backdropFilter: 'blur(20px)',
-        boxShadow: isDark
-          ? '0 -18px 40px rgba(0,0,0,0.45)'
-          : '0 -14px 32px rgba(15,23,42,0.10)',
-        padding: '14px 16px 16px',
+        backdropFilter: 'blur(18px)',
+        transition: 'max-height 0.25s ease, opacity 0.25s ease',
+        maxHeight: nav && !bottomOpen ? 0 : 260,
+        opacity: nav && !bottomOpen ? 0 : 1,
+        overflow: 'hidden'
       }}>
-        {/* Linha destino + distância */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          paddingBottom: 12,
-          borderBottom: isDark
-            ? '1px solid rgba(0,213,255,0.10)'
-            : '1px solid rgba(15,23,42,0.08)',
-        }}>
-          <div style={{
-            width: 38,
-            height: 38,
-            borderRadius: 14,
-            background: isDark ? 'rgba(0,213,255,0.08)' : '#eff6ff',
-            border: isDark
-              ? '1px solid rgba(0,213,255,0.22)'
-              : '1px solid rgba(37,99,235,0.16)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-            boxShadow: isDark ? '0 0 18px rgba(0,213,255,0.08)' : 'none',
-          }}>
-            <MapPin style={{ color: routeBlue, width: 18, height: 18 }} strokeWidth={2.4} />
+        {nav && (
+          <button onClick={() => setBottomOpen(v => !v)}
+            style={{
+              width: '100%', display: 'flex', justifyContent: 'center', padding: '8px 0 4px',
+              background: 'transparent', border: 'none', cursor: 'pointer'
+            }}>
+            <div style={{ width: 38, height: 4, borderRadius: 99, background: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.14)' }} />
+          </button>
+        )}
+
+        <div style={{ padding: nav ? '8px 18px 18px' : '14px 18px 18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+            <div style={{
+              width: 38, height: 38, borderRadius: 14,
+              background: isDark ? 'rgba(0,213,255,0.08)' : '#eff6ff',
+              border: isDark ? '1px solid rgba(0,213,255,0.18)' : '1px solid rgba(37,99,235,0.14)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>
+              <MapPin style={{ color: routeBlue, width: 18, height: 18 }} strokeWidth={2.4} />
+            </div>
+
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{
+                color: panelLabelColor, fontSize: 10, fontWeight: 800,
+                textTransform: 'uppercase', letterSpacing: 1.1, margin: 0
+              }}>Destino</p>
+              <p style={{
+                color: panelText, fontSize: 14, fontWeight: 800, margin: '2px 0 0',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+              }}>{destName}</p>
+            </div>
+
+            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+              <p style={{ color: routeBlue, fontSize: 22, fontWeight: 900, margin: 0, lineHeight: 1 }}>
+                {remain != null ? dist(remain) : '—'}
+              </p>
+              <p style={{ color: panelSubText, fontSize: 11, margin: '3px 0 0', fontWeight: 700 }}>
+                {eta != null ? mins(eta) : '—'}
+              </p>
+            </div>
           </div>
 
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{
-              color: isDark ? '#00d5ff' : '#2563eb',
-              fontSize: 10,
-              fontWeight: 900,
-              textTransform: 'uppercase',
-              letterSpacing: 1.4,
-              margin: 0,
-            }}>
-              Destino
-            </p>
-
-            <p style={{
-              color: isDark ? '#ffffff' : '#0f172a',
-              fontSize: 15,
-              fontWeight: 850,
-              margin: '3px 0 0',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}>
-              {destName}
-            </p>
+          <div style={{ height: 5, borderRadius: 99, background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)', overflow: 'hidden', marginBottom: 12 }}>
+            <motion.div animate={{ width: `${pct}%` }} transition={{ duration: 0.55 }}
+              style={{ height: '100%', borderRadius: 99, background: routeBlue }} />
           </div>
 
-          <div style={{
-            textAlign: 'right',
-            flexShrink: 0,
-            minWidth: 82,
-          }}>
-            <p style={{
-              color: routeBlue,
-              fontSize: 24,
-              fontWeight: 950,
-              margin: 0,
-              lineHeight: 1,
-              letterSpacing: -0.5,
-              textShadow: isDark ? '0 0 14px rgba(37,99,235,0.28)' : 'none',
-            }}>
-              {remain != null ? dist(remain) : '—'}
-            </p>
-
-            <p style={{
-              color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(15,23,42,0.55)',
-              fontSize: 11,
-              margin: '4px 0 0',
-              fontWeight: 700,
-            }}>
-              {eta != null ? mins(eta) : '—'}
-            </p>
-          </div>
-        </div>
-
-        {/* Botão principal */}
-        <div style={{ marginTop: 12 }}>
-          {!nav ? (
-            <motion.button
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={startNav}
-              disabled={!rd}
-              style={{
-                width: '100%',
-                height: 54,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 10,
-                borderRadius: 16,
-                border: isDark
-                  ? '1px solid rgba(0,213,255,0.28)'
-                  : '1px solid rgba(37,99,235,0.18)',
-                background: isDark
-                  ? 'linear-gradient(135deg, rgba(0,213,255,0.10), rgba(37,99,235,0.26))'
-                  : 'linear-gradient(135deg, #eff6ff, #dbeafe)',
-                color: isDark ? '#e0fbff' : '#1d4ed8',
-                fontSize: 15,
-                fontWeight: 900,
-                cursor: rd ? 'pointer' : 'not-allowed',
-                opacity: rd ? 1 : 0.45,
-                boxShadow: isDark
-                  ? '0 0 26px rgba(0,213,255,0.10), inset 0 0 0 1px rgba(255,255,255,0.03)'
-                  : '0 10px 22px rgba(37,99,235,0.12)',
-              }}
-            >
-              <Navigation style={{ width: 19, height: 19 }} strokeWidth={2.7} />
-              Iniciar navegação
-            </motion.button>
-          ) : tracking ? (
-            <div style={{ display: 'flex', gap: 10 }}>
-              <motion.button
-                whileTap={{ scale: 0.97 }}
-                onClick={pauseNav}
+          <div style={{ display: 'flex', gap: 10 }}>
+            {!nav ? (
+              <>
+                {isMobile && destCoords && (
+                  <motion.button whileTap={{ scale: 0.96 }}
+                    onClick={() => openNativeNavigation(destCoords.lat, destCoords.lon, destName, navigationMode)}
+                    style={{
+                      width: 58, height: 54, borderRadius: 18, flexShrink: 0,
+                      background: isDark ? 'rgba(255,255,255,0.06)' : '#f8fafc',
+                      border: isDark ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(0,0,0,0.08)',
+                      color: routeBlue, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                    }} title="Abrir no Maps">
+                    <Smartphone style={{ width: 20, height: 20 }} />
+                  </motion.button>
+                )}
+                <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.97 }}
+                  onClick={startNav} disabled={!rd}
+                  style={{
+                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    gap: 10, padding: '15px 18px', cursor: rd ? 'pointer' : 'not-allowed', border: 'none',
+                    ...neon, opacity: rd ? 1 : 0.4, fontSize: 15
+                  }}>
+                  <Navigation style={{ width: 19, height: 19 }} strokeWidth={2.6} />
+                  Iniciar navegação
+                </motion.button>
+              </>
+            ) : tracking ? (
+              <motion.button whileTap={{ scale: 0.97 }} onClick={pauseNav}
                 style={{
-                  flex: 1,
-                  height: 54,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  borderRadius: 16,
+                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  gap: 8, padding: '14px 18px', borderRadius: 18,
                   background: isDark ? 'rgba(239,68,68,0.12)' : '#fef2f2',
-                  color: '#ef4444',
-                  fontWeight: 900,
-                  fontSize: 15,
-                  border: isDark
-                    ? '1px solid rgba(239,68,68,0.25)'
-                    : '1px solid rgba(239,68,68,0.16)',
-                  cursor: 'pointer',
-                }}
-              >
+                  color: '#ef4444', fontWeight: 900, fontSize: 15,
+                  border: isDark ? '1px solid rgba(239,68,68,0.25)' : '1px solid rgba(239,68,68,0.16)', cursor: 'pointer'
+                }}>
                 <Square style={{ width: 16, height: 16 }} fill="currentColor" />
                 Pausar
               </motion.button>
-
-              <motion.button
-                whileTap={{ scale: 0.92 }}
-                onClick={stopNav}
+            ) : (
+              <motion.button whileTap={{ scale: 0.97 }} onClick={startNav}
                 style={{
-                  width: 54,
-                  height: 54,
-                  borderRadius: 16,
+                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  gap: 8, padding: '14px 18px', cursor: 'pointer', border: 'none', ...neon, fontSize: 15
+                }}>
+                <Play style={{ width: 16, height: 16 }} fill="currentColor" />
+                Retomar
+              </motion.button>
+            )}
+
+            {nav && (
+              <motion.button whileTap={{ scale: 0.92 }} onClick={stopNav}
+                style={{
+                  width: 54, height: 54, borderRadius: 18, flexShrink: 0,
                   background: isDark ? 'rgba(255,255,255,0.06)' : '#f8fafc',
-                  border: isDark
-                    ? '1px solid rgba(255,255,255,0.10)'
-                    : '1px solid rgba(0,0,0,0.08)',
-                  color: isDark ? 'rgba(255,255,255,0.75)' : '#374151',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                }}
-                title="Encerrar navegação"
-              >
+                  border: isDark ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(0,0,0,0.08)',
+                  color: isDark ? 'rgba(255,255,255,0.72)' : '#374151',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                }} title="Encerrar navegação">
                 <RotateCcw style={{ width: 18, height: 18 }} />
               </motion.button>
-            </div>
-          ) : (
-            <motion.button
-              whileTap={{ scale: 0.97 }}
-              onClick={startNav}
-              style={{
-                width: '100%',
-                height: 54,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                borderRadius: 16,
-                border: isDark
-                  ? '1px solid rgba(0,213,255,0.28)'
-                  : '1px solid rgba(37,99,235,0.18)',
-                background: isDark
-                  ? 'linear-gradient(135deg, rgba(0,213,255,0.10), rgba(37,99,235,0.26))'
-                  : 'linear-gradient(135deg, #eff6ff, #dbeafe)',
-                color: isDark ? '#e0fbff' : '#1d4ed8',
-                fontSize: 15,
-                fontWeight: 900,
-                cursor: 'pointer',
-              }}
-            >
-              <Play style={{ width: 16, height: 16 }} fill="currentColor" />
-              Retomar navegação
-            </motion.button>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
