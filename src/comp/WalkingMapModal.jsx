@@ -461,64 +461,160 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
   }, [isDark, isDrivingMode]);
 
   const addUserPin = useCallback((m, pos) => {
-    if (!m || markerRef.current) return;
-    const el = document.createElement('div');
-    el.style.cssText = 'position:relative;width:42px;height:42px;display:flex;align-items:center;justify-content:center;';
-    el.innerHTML = `
-      <div style="position:absolute;inset:0;border-radius:50%;background:rgba(37,99,235,0.14);"></div>
-      <div class="nav-arrow" style="width:30px;height:30px;border-radius:50%;background:#2563eb;border:3px solid #fff;
-        box-shadow:0 6px 18px rgba(0,0,0,0.35),0 0 0 5px rgba(37,99,235,0.14);
-        display:flex;align-items:center;justify-content:center;transition:transform .25s ease;">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="white" style="transform:translateY(-1px)"><path d="M12 2L5 22l7-4 7 4L12 2z"/></svg>
-      </div>`;
-    markerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([pos.lon, pos.lat]).addTo(m);
-  }, []);
+    if (markerRef.current) return;
 
-  // Instrução ─────────────────────────────────────────────────────────────────
-  const updateInstr = useCallback((distM) => {
-    const data = rdRef.current;
-    if (!data?.instrs?.length) return;
-    let idx = 0;
-    for (let i = 0; i < data.instrs.length; i++) {
-      if (data.instrs[i].off <= distM) idx = i; else break;
+    const el = document.createElement("div");
+    el.className = "navigation-arrow-marker";
+
+    el.innerHTML = `
+    <div class="nav-arrow-pulse"></div>
+    <div class="nav-arrow-body">
+      <svg viewBox="0 0 64 64" width="44" height="44">
+        <defs>
+          <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="rgba(0,0,0,0.45)" />
+          </filter>
+        </defs>
+        <path 
+          d="M32 4 L52 56 L32 45 L12 56 Z"
+          fill="#18D7FF"
+          stroke="#FFFFFF"
+          stroke-width="5"
+          stroke-linejoin="round"
+          filter="url(#shadow)"
+        />
+        <path 
+          d="M32 12 L43 43 L32 37 L21 43 Z"
+          fill="#007AFF"
+          opacity="0.9"
+        />
+      </svg>
+    </div>
+  `;
+
+    const style = document.createElement("style");
+    style.innerHTML = `
+    .navigation-arrow-marker {
+      width: 58px;
+      height: 58px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform-origin: center center;
+      will-change: transform;
     }
-    setCurI(data.instrs[idx]); setNextI(data.instrs[idx + 1] || null);
+
+    .nav-arrow-pulse {
+      position: absolute;
+      width: 54px;
+      height: 54px;
+      border-radius: 999px;
+      background: rgba(24, 215, 255, 0.16);
+      border: 1px solid rgba(24, 215, 255, 0.35);
+      animation: navPulse 1.8s ease-out infinite;
+    }
+
+    .nav-arrow-body {
+      position: relative;
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    @keyframes navPulse {
+      0% {
+        transform: scale(0.72);
+        opacity: 0.8;
+      }
+      100% {
+        transform: scale(1.45);
+        opacity: 0;
+      }
+    }
+  `;
+
+    if (!document.getElementById("navigation-arrow-style")) {
+      style.id = "navigation-arrow-style";
+      document.head.appendChild(style);
+    }
+
+    markerRef.current = new mapboxgl.Marker({
+      element: el,
+      anchor: "center",
+      rotationAlignment: "map",
+      pitchAlignment: "map",
+    })
+      .setLngLat([pos.lon, pos.lat])
+      .addTo(m);
   }, []);
 
   // GPS ───────────────────────────────────────────────────────────────────────
   const onGPS = useCallback(pos => {
     const { latitude: la, longitude: lo, accuracy: ac } = pos.coords;
+
     setAcc(Math.round(ac));
+
     let b = brng;
-    if (lastRef.current) b = bear(lastRef.current.lat, lastRef.current.lon, la, lo);
+    if (lastRef.current) {
+      b = bear(lastRef.current.lat, lastRef.current.lon, la, lo);
+    }
+
     lastRef.current = { lat: la, lon: lo };
     setBrng(b);
+
     const m = mapRef.current;
+
     if (m) {
       if (markerRef.current) {
         markerRef.current.setLngLat([lo, la]);
-        const arrow = markerRef.current.getElement()?.querySelector('.nav-arrow');
-        if (arrow) arrow.style.transform = `rotate(${b}deg)`;
-      } else addUserPin(m, { lat: la, lon: lo });
+
+        const markerEl = markerRef.current.getElement();
+        const arrowBody = markerEl.querySelector(".nav-arrow-body");
+
+        if (arrowBody) {
+          arrowBody.style.transform = `rotate(${b}deg)`;
+        }
+      } else {
+        addUserPin(m, { lat: la, lon: lo });
+      }
+
       // Câmera mais próxima e menos aérea, mantendo o usuário mais para baixo da tela.
-      if (!overview) m.easeTo({
-        center: [lo, la],
-        zoom: 18.4,
-        pitch: 56,
-        bearing: b,
-        padding: { top: 80, bottom: 260, left: 0, right: 0 },
-        duration: 650,
-        easing: t => t
-      });
+      if (!overview) {
+        m.easeTo({
+          center: [lo, la],
+          zoom: 18.4,
+          pitch: 56,
+          bearing: b,
+          padding: { top: 80, bottom: 260, left: 0, right: 0 },
+          duration: 650,
+          easing: t => t
+        });
+      }
+
       const rd2 = rdRef.current;
-      if (rd2 && m.getSource('wr')) drawRoute(m, rd2);
+      if (rd2 && m.getSource('wr')) {
+        drawRoute(m, rd2);
+      }
     }
-    const o = origRef.current, de = destRef.current, rd2 = rdRef.current;
+
+    const o = origRef.current;
+    const de = destRef.current;
+    const rd2 = rdRef.current;
+
     if (rd2 && o) {
       const cov = Math.min(hav(o.lat, o.lon, la, lo), rd2.totalM);
       const rem = Math.max(0, rd2.totalM - cov);
-      setCovered(cov); setRemain(rem); updateInstr(cov);
-      if (de && hav(la, lo, de.lat, de.lon) < 25) setArrived(true);
+
+      setCovered(cov);
+      setRemain(rem);
+      updateInstr(cov);
+
+      if (de && hav(la, lo, de.lat, de.lon) < 25) {
+        setArrived(true);
+      }
     }
   }, [overview, updateInstr, addUserPin, drawRoute, brng]);
 
