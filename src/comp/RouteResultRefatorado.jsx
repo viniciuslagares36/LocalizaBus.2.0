@@ -712,6 +712,9 @@ const liveMarkers = useMemo(
 );
 
   const liveCenter = useMemo(() => {
+    const firstBus = liveMarkers[0];
+    if (firstBus) return [firstBus.lon, firstBus.lat];
+
     const routeWithStop = processedRoutes.find(
       (route) => route.nearestStopLat && route.nearestStopLon
     );
@@ -723,8 +726,7 @@ const liveMarkers = useMemo(
       ];
     }
 
-    const firstBus = liveMarkers[0];
-    return firstBus ? [firstBus.lon, firstBus.lat] : null;
+    return null;
   }, [processedRoutes, liveMarkers]);
   const handleWalkOpen = useCallback((route) => {
     if (!route) return;
@@ -758,6 +760,19 @@ const liveMarkers = useMemo(
   useEffect(() => () => {
     document.body.style.overflow = '';
   }, []);
+
+
+  useEffect(() => {
+    const firstLiveRoute = processedRoutes.find(
+      (route) => route?.isLive && route?.realTimeGPS?.lat && route?.realTimeGPS?.lon
+    );
+
+    if (firstLiveRoute) {
+      setSelectedRouteId((current) => current || firstLiveRoute.id);
+    } else {
+      setSelectedRouteId(null);
+    }
+  }, [processedRoutes]);
 
   if (loading) {
     return (
@@ -830,12 +845,12 @@ const liveMarkers = useMemo(
               : 'text-gray-500 dark:text-gray-400'
               }`}
           >
-            {hasLive ? '🚀 GPS REAL — Veículos ao vivo' : 'Dados de horários — SEMOB/DFTrans'}
+            {hasLive ? 'GPS REAL — veículos ao vivo' : 'Dados de horários — SEMOB/DFTrans'}
           </span>
         </div>
 
 {(liveCenter || pickedLocation || userPosition || allDfStops.length > 0) && (
-  <div className="rounded-2xl overflow-hidden border border-cyan-400/20">
+  <div className="rounded-2xl overflow-hidden border border-cyan-400/20 shadow-lg shadow-cyan-950/10">
     <LeafletMap
       center={
         liveCenter ||
@@ -855,6 +870,8 @@ const liveMarkers = useMemo(
       onPickLocation={onPickLocation}
       pickingLocation={pickingLocation}
       onTogglePickingLocation={onTogglePickingLocation}
+      height={liveMarkers.length ? 'clamp(320px, 58vh, 560px)' : 'clamp(300px, 48vh, 460px)'}
+      focusMode={liveMarkers.length ? 'first-bus' : 'auto'}
     />
   </div>
 )}

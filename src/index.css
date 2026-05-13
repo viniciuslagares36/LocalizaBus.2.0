@@ -134,3 +134,52 @@ body {
   color: #e5e7eb !important;
   border-color: rgba(148, 163, 184, 0.25) !important;
 }
+/* ─── Responsividade global LocalizaBus ───────────────────── */
+html,
+body,
+#root {
+  min-height: 100%;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+img,
+svg,
+canvas,
+video {
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.leaflet-container {
+  width: 100% !important;
+  min-height: 300px;
+  touch-action: pan-x pan-y;
+}
+
+.leaflet-control-container .leaflet-control {
+  max-width: calc(100vw - 28px);
+}
+
+@media (max-width: 420px) {
+  .leaflet-container {
+    min-height: 320px;
+  }
+
+  .leaflet-popup-content {
+    max-width: 240px;
+    font-size: 11px;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1180px) {
+  .leaflet-container {
+    min-height: 380px;
+  }
+}

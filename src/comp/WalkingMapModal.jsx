@@ -37,24 +37,53 @@ const dist = m => m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km
 const mins = s => { if (s < 60) return `${s}s`; const m = Math.floor(s / 60), r = s % 60; return r ? `${m}min ${r}s` : `${m} min`; };
 const clockTime = (d = new Date()) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
+const isIOSDevice = () => /iPad|iPhone|iPod/i.test(navigator.userAgent);
+const isAndroidDevice = () => /Android/i.test(navigator.userAgent);
+
 const pickBestPtBrVoice = () => {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
+
   const voices = window.speechSynthesis.getVoices?.() || [];
   if (!voices.length) return null;
+
   const ptVoices = voices.filter(v => String(v.lang || '').toLowerCase().startsWith('pt'));
-  const preferred = ptVoices.find(v => /google|microsoft|natural|online|francisca|maria|luciana|daniel/i.test(v.name));
-  return preferred || ptVoices.find(v => String(v.lang || '').toLowerCase() === 'pt-br') || ptVoices[0] || null;
+  const score = (voice) => {
+    const name = String(voice.name || '').toLowerCase();
+    const lang = String(voice.lang || '').toLowerCase();
+    let points = 0;
+
+    if (lang === 'pt-br') points += 50;
+    if (/google|microsoft|natural|online|premium|neural|enhanced/i.test(name)) points += 35;
+    if (/maria|francisca|luciana|heloisa|helena|female|feminina/i.test(name)) points += 15;
+    if (/compact|eloquence|basic/i.test(name)) points -= 25;
+
+    return points;
+  };
+
+  return [...ptVoices].sort((a, b) => score(b) - score(a))[0] || voices[0] || null;
 };
+
+const normalizeSpeechText = (txt = '') => String(txt)
+  .replace(/<[^>]+>/g, ' ')
+  .replace(/&amp;/g, '&')
+  .replace(/\bDF[- ]?0?61\b/gi, 'D F zero sessenta e um')
+  .replace(/\bDF\b/gi, 'D F')
+  .replace(/\bEPAA\b/gi, 'E P A A')
+  .replace(/\bEPCT\b/gi, 'E P C T')
+  .replace(/\bBR\b/gi, 'B R')
+  .replace(/\bAv\.?\b/gi, 'Avenida')
+  .replace(/\bSt\.?\b/gi, 'Setor')
+  .replace(/\bkm\b/gi, 'quilômetros')
+  .replace(/\bm\b/gi, 'metros')
+  .replace(/\s+/g, ' ')
+  .trim();
 
 const makeSpeechText = (current, next) => {
-  const normalize = (txt = '') => String(txt)
-    .replace(/DF/gi, 'D F')
-    .replace(/EP[A-Z]?/gi, match => match.split('').join(' '))
-    .replace(/\s+/g, ' ')
-    .trim();
-  return next ? `${normalize(current)}. Em seguida, ${normalize(next)}.` : normalize(current);
+  const first = normalizeSpeechText(current);
+  const second = normalizeSpeechText(next);
+  if (!second) return first;
+  return `${first}. Depois, ${second}.`;
 };
-
 // ─── Strip HTML tags das instruções (remove <street>, </street>, <b>, etc.) ───
 const stripHtmlTags = (str) => {
   if (!str) return '';
@@ -219,6 +248,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
   const t0Ref = useRef(null);
   const lastRef = useRef(null);
   const lastSpokenRef = useRef('');
+  const voiceReadyRef = useRef(false);
   const rdRef = useRef(null);
   const origRef = useRef(null);
   const destRef = useRef(null);
@@ -447,17 +477,17 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
       m.addLayer({
         id: 'wr-shadow', type: 'line', source: 'wr',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': isDark ? '#020617' : '#ffffff', 'line-width': 14, 'line-opacity': 0.88 }
+        paint: { 'line-color': 'rgba(255,255,255,0.74)', 'line-width': 18, 'line-opacity': 0.96, 'line-blur': 2.2 }
       });
       m.addLayer({
         id: 'wr-fill', type: 'line', source: 'wr',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': isDrivingMode ? '#2563eb' : '#06b6d4', 'line-width': 8, 'line-opacity': 1 }
+        paint: { 'line-color': isDrivingMode ? '#18D7FF' : '#0A84FF', 'line-width': 10.5, 'line-opacity': 1 }
       });
       m.addLayer({
         id: 'wr-soft-highlight', type: 'line', source: 'wr',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#dbeafe', 'line-width': 2, 'line-opacity': 0.65 }
+        paint: { 'line-color': '#FFFFFF', 'line-width': 3, 'line-opacity': 0.82 }
       });
     });
   }, [isDrivingMode, isDark]);
@@ -685,27 +715,62 @@ const onGPS = useCallback(pos => {
 }, [overview, updateInstr, addUserPin, drawRoute, brng]);
 
 
+  const unlockVoice = useCallback(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    try {
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.getVoices?.();
+
+      // iOS/Android só liberam áudio após interação do usuário.
+      const silent = new window.SpeechSynthesisUtterance(' ');
+      silent.lang = 'pt-BR';
+      silent.volume = 0;
+      window.speechSynthesis.speak(silent);
+      voiceReadyRef.current = true;
+    } catch (error) {
+      console.warn('[Voz] Não foi possível liberar a voz:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    const loadVoices = () => window.speechSynthesis.getVoices?.();
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
   // Voz da navegação ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!nav || !tracking || voiceMuted || !curI?.msg) return;
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
 
     const text = makeSpeechText(curI.msg, nextI?.msg);
-    if (lastSpokenRef.current === text) return;
+    if (!text || lastSpokenRef.current === text) return;
 
-    lastSpokenRef.current = text;
-    window.speechSynthesis.cancel();
+    try {
+      lastSpokenRef.current = text;
+      window.speechSynthesis.cancel();
 
-    const utterance = new window.SpeechSynthesisUtterance(text);
-    utterance.lang = 'pt-BR';
-    const selectedVoice = pickBestPtBrVoice();
-    if (selectedVoice) utterance.voice = selectedVoice;
-    // Mais natural: fala um pouco mais devagar e com pitch levemente maior.
-    utterance.rate = 0.88;
-    utterance.pitch = 1.04;
-    utterance.volume = 0.92;
+      const utterance = new window.SpeechSynthesisUtterance(text);
+      utterance.lang = 'pt-BR';
+      const selectedVoice = pickBestPtBrVoice();
+      if (selectedVoice) utterance.voice = selectedVoice;
 
-    window.speechSynthesis.speak(utterance);
+      // Ajuste fino: mais calmo no iOS, um pouco mais vivo no Android.
+      utterance.rate = isIOSDevice() ? 0.84 : isAndroidDevice() ? 0.92 : 0.88;
+      utterance.pitch = isAndroidDevice() ? 1.02 : 0.94;
+      utterance.volume = 1;
+
+      window.speechSynthesis.speak(utterance);
+    } catch (error) {
+      console.warn('[Voz] Erro ao falar instrução:', error);
+    }
   }, [nav, tracking, voiceMuted, curI, nextI]);
 
   const toggleVoice = useCallback(() => {
@@ -727,7 +792,7 @@ const onGPS = useCallback(pos => {
     }
 
     setErr(null);
-
+    unlockVoice();
 
     setNavStartedAt(new Date());
     lastSpokenRef.current = '';
@@ -762,7 +827,7 @@ const onGPS = useCallback(pos => {
 
     watchRef.current = navigator.geolocation.watchPosition(onGPS, handleGpsError,
       { enableHighAccuracy: true, maximumAge: 800, timeout: 12000 });
-  }, [elapsed, onGPS]);
+  }, [elapsed, onGPS, unlockVoice]);
 
   const pauseNav = useCallback(() => {
     setTracking(false);
@@ -811,6 +876,25 @@ const onGPS = useCallback(pos => {
       return next;
     });
   }, [brng, fitAll]);
+
+
+  const focusUserLocation = useCallback(() => {
+    const m = mapRef.current;
+    const pos = lastRef.current || origRef.current;
+    if (!m || !pos) return;
+
+    setOverview(false);
+    m.easeTo({
+      center: [pos.lon, pos.lat],
+      zoom: lastRef.current ? 19.05 : 18.7,
+      pitch: lastRef.current ? 64 : 58,
+      bearing: lastRef.current ? brng : rdRef.current?.initialBearing || 0,
+      padding: { top: 120, bottom: 320, left: 0, right: 0 },
+      offset: [0, 90],
+      duration: 750,
+      easing: t => t,
+    });
+  }, [brng]);
 
   useEffect(() => () => { pauseNav(); }, []);
 
@@ -1076,6 +1160,37 @@ const onGPS = useCallback(pos => {
         </motion.button>
 
         
+        {overview && (
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={focusUserLocation}
+            style={{
+              position: 'absolute',
+              top: 'max(env(safe-area-inset-top,0px),66px)',
+              right: 14,
+              zIndex: 36,
+              height: 42,
+              padding: '0 14px',
+              borderRadius: 999,
+              background: isDark ? 'rgba(12,17,27,0.72)' : 'rgba(255,255,255,0.80)',
+              backdropFilter: 'blur(22px) saturate(170%)',
+              WebkitBackdropFilter: 'blur(22px) saturate(170%)',
+              border: isDark ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(15,23,42,0.08)',
+              color: isDark ? '#E0FBFF' : '#2563EB',
+              fontSize: 12,
+              fontWeight: 900,
+              cursor: 'pointer',
+              boxShadow: '0 10px 26px rgba(0,0,0,0.18)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <Navigation style={{ width: 15, height: 15 }} strokeWidth={2.8} />
+            Minha localização
+          </motion.button>
+        )}
+
         {nav && tracking && (
           <motion.div
             initial={{ opacity: 0, scale: 0.9, y: 10 }}

@@ -158,17 +158,35 @@ class ErrorBoundary extends Component {
 const spring = { type: 'spring', stiffness: 120, damping: 22 };
 
 const carouselImages = [
-  { src: 'https://wallpaperaccess.com/full/2073412.jpg', title: 'Catedral de Brasília' },
-  { src: 'https://wallpaperaccess.com/full/2073407.jpg', title: 'Estádio Mané Garrincha' },
-  { src: 'https://wallpaperaccess.com/full/2073416.jpg', title: 'Brasília à noite' },
+  { src: 'https://images.unsplash.com/photo-1619546952812-520e98064a52?auto=format&fit=crop&w=1400&q=55', title: 'Brasília' },
+  { src: 'https://images.unsplash.com/photo-1596495578065-6e0763fa1178?auto=format&fit=crop&w=1400&q=55', title: 'Mobilidade urbana' },
+  { src: 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=1400&q=55', title: 'Cidade à noite' },
 ];
+
+const isMobileLikeDevice = () => {
+  if (typeof window === 'undefined') return false;
+
+  return (
+    window.innerWidth < 768 ||
+    navigator.connection?.saveData ||
+    ['slow-2g', '2g', '3g'].includes(navigator.connection?.effectiveType)
+  );
+};
 
 // Pré-carrega próxima imagem sem bloquear a main thread
 const preloadImage = (src) => {
-  const img = new Image();
-  img.decoding = 'async';
-  img.fetchPriority = 'low';
-  img.src = src;
+  const run = () => {
+    const img = new Image();
+    img.decoding = 'async';
+    img.fetchPriority = 'low';
+    img.src = src;
+  };
+
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(run, { timeout: 1800 });
+  } else {
+    window.setTimeout(run, 800);
+  }
 };
 
 // ─── ROUTE SEARCH HOOK ───────────────────────────
@@ -1123,7 +1141,7 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
       window.__lastSearchType = 'line';
       window.__lastLineDestinationHint = destinationAddress;
 
-      const vehicles = await getLiveVehiclesByLine(linha);
+      const vehicles = await getLiveVehiclesByLine(linha, { signal: abortControllerRef.current?.signal });
 
       if (!vehicles?.length) {
         setRoutes([]);
@@ -1174,7 +1192,7 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
       window.__lastSearchType = 'line_destination';
       window.__lastLineDestinationHint = destinationAddress;
 
-      const vehicles = await getLiveVehiclesByLine(linha);
+      const vehicles = await getLiveVehiclesByLine(linha, { signal: abortControllerRef.current?.signal });
 
       if (!vehicles?.length) {
         setRoutes([]);
@@ -1247,7 +1265,7 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
 
       const [originCoords, vehicles] = await Promise.all([
         geocodeAddress(originAddress, signal),
-        getLiveVehiclesByLine(linha),
+        getLiveVehiclesByLine(linha, { signal }),
       ]);
 
       if (!vehicles?.length) {
@@ -1593,7 +1611,7 @@ const searchRoute = async (originAddress, destinationAddress, mode) => {
       try {
         // Atualiza busca por linha específica
         if (window.__lastSearchType === 'line' && window.__lastLiveLine) {
-          const vehicles = await getLiveVehiclesByLine(window.__lastLiveLine);
+          const vehicles = await getLiveVehiclesByLine(window.__lastLiveLine, { force: true });
 
           if (vehicles?.length) {
             const liveRoutes = buildLiveBusLineRoutes(
@@ -2511,20 +2529,27 @@ function App() {
   }, [dark]);
 
   useEffect(() => {
-    // Pré-carrega a próxima imagem antes da transição
+    // No celular o carrossel era um dos pontos que mais causava delay.
+    // Mantém a primeira imagem e só pré-carrega as outras quando o navegador estiver ocioso.
+    const mobileLike = isMobileLikeDevice();
+
     const preloadNext = (current) => {
+      if (mobileLike) return;
       const nextIdx = (current + 1) % carouselImages.length;
       preloadImage(carouselImages[nextIdx].src);
     };
-    preloadNext(0); // pré-carrega a segunda ao montar
+
+    preloadNext(0);
+
+    if (mobileLike) return undefined;
+
     const id = setInterval(() => {
       setActiveSlide(p => {
         const next = (p + 1) % carouselImages.length;
         preloadNext(next);
         return next;
       });
-    }, 5000);
-
+    }, 9000);
 
     return () => clearInterval(id);
   }, []);

@@ -20,21 +20,52 @@ let memoryCache = {
   updatedAt: 0,
 };
 
-const CACHE_TIME_MS = 15000;
+const lineCache = new Map();
+const inflightRequests = new Map();
 
-async function fetchJson(url) {
-  const response = await fetch(url, {
+const CACHE_TIME_MS = 15000;
+const LINE_CACHE_TIME_MS = 12000;
+const REQUEST_TIMEOUT_MS = 7000;
+
+async function fetchJson(url, options = {}) {
+  const { signal, timeoutMs = REQUEST_TIMEOUT_MS, cacheKey = url } = options;
+
+  if (inflightRequests.has(cacheKey)) {
+    return inflightRequests.get(cacheKey);
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  const abortFromCaller = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    signal.addEventListener('abort', abortFromCaller, { once: true });
+  }
+
+  const requestPromise = fetch(url, {
     method: 'GET',
     headers: {
       Accept: 'application/json,text/plain,*/*',
     },
-  });
+    signal: controller.signal,
+    cache: 'no-store',
+  })
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
 
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
-  }
+      return response.json();
+    })
+    .finally(() => {
+      clearTimeout(timeoutId);
+      inflightRequests.delete(cacheKey);
+      if (signal) signal.removeEventListener('abort', abortFromCaller);
+    });
 
-  return response.json();
+  inflightRequests.set(cacheKey, requestPromise);
+  return requestPromise;
 }
 
 function normalizeLine(line) {
@@ -155,7 +186,8 @@ function normalizeDftransResponse(data) {
   return [];
 }
 
-export async function fetchDftransGpsRaw() {
+export async function fetchDftransGpsRaw(options = {}) {
+  const { signal } = options;
   const now = Date.now();
 
   if (memoryCache.data && now - memoryCache.updatedAt < CACHE_TIME_MS) {
@@ -167,7 +199,7 @@ export async function fetchDftransGpsRaw() {
   // 1. Cloudflare Pages Function
   if (WORKER_GPS_URL) {
     try {
-      data = await fetchJson(WORKER_GPS_URL);
+      data = await fetchJson(WORKER_GPS_URL, { signal, cacheKey: 'gps_all_worker' });
 
       memoryCache = {
         data,
@@ -185,7 +217,7 @@ export async function fetchDftransGpsRaw() {
 
   // 2. Proxy Vercel
   try {
-    data = await fetchJson(VERCEL_PROXY_URL);
+    data = await fetchJson(VERCEL_PROXY_URL, { signal, cacheKey: 'gps_all_vercel' });
 
     memoryCache = {
       data,
@@ -201,7 +233,7 @@ export async function fetchDftransGpsRaw() {
   }
 
   // 3. Endpoint direto DFTrans
-  data = await fetchJson(DFTRANS_DIRECT_URL);
+  data = await fetchJson(DFTRANS_DIRECT_URL, { signal, cacheKey: 'gps_all_direct' });
 
   memoryCache = {
     data,
@@ -211,26 +243,41 @@ export async function fetchDftransGpsRaw() {
   return data;
 }
 
-export async function getAllLiveVehicles() {
-  const data = await fetchDftransGpsRaw();
+export async function getAllLiveVehicles(options = {}) {
+  const data = await fetchDftransGpsRaw(options);
   return normalizeDftransResponse(data);
 }
 
-export async function getLiveVehiclesByLine(line) {
+export async function getLiveVehiclesByLine(line, options = {}) {
   const normalizedLine = normalizeLine(line);
+  const { signal, force = false } = options;
 
   if (!normalizedLine) return [];
 
-  // Preferência: rota filtrada do Cloudflare
+  const cacheKey = normalizeLineComparable(normalizedLine);
+  const cached = lineCache.get(cacheKey);
+
+  if (!force && cached?.data && Date.now() - cached.updatedAt < LINE_CACHE_TIME_MS) {
+    return cached.data;
+  }
+
+  // Preferência: rota filtrada do Cloudflare. É muito mais rápido que baixar todos os ônibus.
   if (WORKER_VEHICLES_URL) {
     try {
       const url = `${WORKER_VEHICLES_URL}?linha=${encodeURIComponent(normalizedLine)}`;
-      const data = await fetchJson(url);
+      const data = await fetchJson(url, {
+        signal,
+        cacheKey: `line_${cacheKey}`,
+        timeoutMs: 5500,
+      });
 
       if (Array.isArray(data?.vehicles)) {
-        return normalizeDftransResponse(data);
+        const vehicles = normalizeDftransResponse(data);
+        lineCache.set(cacheKey, { data: vehicles, updatedAt: Date.now() });
+        return vehicles;
       }
     } catch (error) {
+      if (error?.name === 'AbortError') throw error;
       console.warn(
         `[DFTrans GPS] Filtro por linha ${normalizedLine} falhou no Cloudflare:`,
         error?.message
@@ -238,16 +285,18 @@ export async function getLiveVehiclesByLine(line) {
     }
   }
 
-  // Fallback: pega tudo e filtra no navegado
-  const vehicles = await getAllLiveVehicles();
-
-  return vehicles.filter((vehicle) => {
+  // Fallback: pega tudo e filtra no navegador. Mantém cache curto para não travar celular.
+  const vehicles = await getAllLiveVehicles({ signal });
+  const filtered = vehicles.filter((vehicle) => {
     return sameBusLine(vehicle.linha || vehicle.line, normalizedLine);
   });
+
+  lineCache.set(cacheKey, { data: filtered, updatedAt: Date.now() });
+  return filtered;
 }
 
-export async function fetchDftransVehicles() {
-  return getAllLiveVehicles();
+export async function fetchDftransVehicles(options = {}) {
+  return getAllLiveVehicles(options);
 }
 
 export function getVehicleAgeMinutes(vehicle) {

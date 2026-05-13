@@ -191,6 +191,26 @@ const createBusWithLineBadgeIcon = (line, isSelected = false, directionType = ''
 const isValidCoord = (lat, lon) =>
   Number.isFinite(Number(lat)) && Number.isFinite(Number(lon));
 
+// Mantém o mapa focado no DF e corrige casos em que a API vem com lat/lon invertidos.
+// Isso evita abrir o mapa em África/oceano quando o usuário pesquisa uma linha.
+const isCoordInsideDf = (lat, lon) => {
+  const la = Number(lat);
+  const lo = Number(lon);
+  return la >= -16.35 && la <= -15.35 && lo >= -48.35 && lo <= -47.20;
+};
+
+const normalizeDfPoint = (point) => {
+  if (!point) return null;
+
+  const lat = Number(point.lat);
+  const lon = Number(point.lon);
+
+  if (isCoordInsideDf(lat, lon)) return { ...point, lat, lon };
+  if (isCoordInsideDf(lon, lat)) return { ...point, lat: lon, lon: lat, _swappedCoords: true };
+
+  return null;
+};
+
 const getRoutePolylines = (routes = []) => {
   return routes
     .filter((route) => Array.isArray(route.routePoints) && route.routePoints.length > 1)
@@ -280,12 +300,31 @@ const getStopsFromRoutes = (routes = []) => {
   return Array.from(map.values());
 };
 
-function MapController({ center, markers, routeLines, userPosition, boardingStop }) {
+function MapController({ center, markers, routeLines, userPosition, boardingStop, focusMode = 'auto' }) {
   const map = useMap();
-  const didInitialFitRef = useRef(false);
+  const lastSignatureRef = useRef('');
 
   useEffect(() => {
-    if (didInitialFitRef.current) return;
+    const firstBus = markers.find((marker) =>
+      isValidCoord(marker.lat, marker.lon) &&
+      (marker.realTimeGPS || marker.type === 'bus' || marker.line || marker.linha || marker.routeId)
+    );
+
+    const signature = firstBus
+      ? `bus_${firstBus.routeId || firstBus.id || firstBus.line || ''}_${Number(firstBus.lat).toFixed(6)}_${Number(firstBus.lon).toFixed(6)}`
+      : `${center?.[0] || ''}_${center?.[1] || ''}_${markers.length}_${routeLines.length}_${focusMode}`;
+
+    if (lastSignatureRef.current === signature) return;
+    lastSignatureRef.current = signature;
+
+    // Pesquisa por linha/ônibus ao vivo: abre direto no primeiro ônibus.
+    // Sem animação pesada para não travar celular de entrada.
+    if (firstBus && focusMode !== 'bounds') {
+      map.setView([Number(firstBus.lat), Number(firstBus.lon)], 16.2, {
+        animate: false,
+      });
+      return;
+    }
 
     const boundsPoints = [];
 
@@ -301,27 +340,27 @@ function MapController({ center, markers, routeLines, userPosition, boardingStop
       boundsPoints.push([Number(boardingStop.lat), Number(boardingStop.lon)]);
     }
 
-    markers.forEach((marker) => {
+    markers.slice(0, 6).forEach((marker) => {
       if (isValidCoord(marker.lat, marker.lon)) {
         boundsPoints.push([Number(marker.lat), Number(marker.lon)]);
       }
     });
 
-    routeLines.forEach((route) => {
-      route.points.forEach((point) => boundsPoints.push(point));
+    // Evita processar milhares de pontos no mobile.
+    routeLines.slice(0, 2).forEach((route) => {
+      route.points.slice(0, 120).forEach((point) => boundsPoints.push(point));
     });
 
     if (boundsPoints.length >= 2) {
       map.fitBounds(boundsPoints, {
         padding: [35, 35],
-        maxZoom: 16,
+        maxZoom: 15,
+        animate: false,
       });
     } else if (boundsPoints.length === 1) {
-      map.setView(boundsPoints[0], 15);
+      map.setView(boundsPoints[0], 15, { animate: false });
     }
-
-    didInitialFitRef.current = true;
-  }, [center, markers, routeLines, userPosition, boardingStop, map]);
+  }, [center, markers, routeLines, userPosition, boardingStop, map, focusMode]);
 
   return null;
 }
@@ -465,9 +504,9 @@ function VisibleDfStopsLayer({ stops = [], hiddenStopKeys = new Set() }) {
 
       return viewport.bounds.contains([lat, lon]);
     });
-  }, [stops, viewport, hiddenStopKeys]);
+  }, [stops, viewport, hiddenStopKeys]).slice(0, 80);
 
-  if (viewport.zoom < 13) return null;
+  if (viewport.zoom < 14) return null;
 
   return visibleStops.map((stop) => {
     const lat = Number(stop.lat ?? stop.position?.lat);
@@ -478,7 +517,7 @@ function VisibleDfStopsLayer({ stops = [], hiddenStopKeys = new Set() }) {
       <Marker
         key={`df_stop_${stop.stopId || stop.id || `${lat}_${lon}`}`}
         position={[lat, lon]}
-        icon={nearbyStopIcon || fallbackStopIcon}
+        icon={nearbyStopIcon}
       >
         <Popup>
           <div style={{ minWidth: 180 }}>
@@ -511,13 +550,14 @@ export default function LeafletMap({
   onPickLocation = null,
   pickingLocation = false,
   onTogglePickingLocation = null,
+  focusMode = 'auto',
 }) {
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(Date.now());
-    }, 1000);
+    }, 15000);
 
     return () => clearInterval(timer);
   }, []);
@@ -562,7 +602,8 @@ export default function LeafletMap({
   const visibleMarkers = useMemo(
     () =>
       markers
-        .filter((marker) => isValidCoord(marker.lat, marker.lon))
+        .map(normalizeDfPoint)
+        .filter(Boolean)
         .slice(0, 8),
     [markers]
   );
@@ -602,6 +643,7 @@ export default function LeafletMap({
   routeLines={routeLines}
   userPosition={userPosition}
   boardingStop={boardingStop}
+  focusMode={focusMode}
 />
 
 <FollowSelectedTarget
@@ -827,7 +869,7 @@ export default function LeafletMap({
 
       <Marker
         position={[Number(marker.lat), Number(marker.lon)]}
-        icon={busIcon || fallbackBusIcon}
+        icon={createBusWithLineBadgeIcon(marker.line, isSelected, marker.directionType)}
       >
         <Popup>
           <div style={{ minWidth: 230 }}>
@@ -925,7 +967,10 @@ export default function LeafletMap({
     }}
     title="Escolher local no mapa"
   >
-    <span>📍</span>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 21s7-4.6 7-11a7 7 0 1 0-14 0c0 6.4 7 11 7 11Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" strokeWidth="2" />
+    </svg>
     <span>{pickingLocation ? 'Clique no mapa' : 'Escolher no mapa'}</span>
   </button>
 )}
