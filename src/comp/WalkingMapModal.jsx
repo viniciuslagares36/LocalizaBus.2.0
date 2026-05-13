@@ -421,7 +421,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: {
           // borda externa mais suave, sem aquele preto pesado
-          'line-color': isDark ? 'rgba(0, 213, 255, 0.22)' : 'rgba(37, 99, 235, 0.22)',
+          'line-color': isDark ? 'rgba(117, 246, 255, 0.74)' : 'rgb(255, 255, 255)',
           'line-width': 16,
           'line-opacity': 1,
           'line-blur': 2
@@ -785,7 +785,16 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
     <div ref={wrapRef} style={{ position: 'fixed', inset: 0, zIndex: 2147483647, background: wrapperBg, display: 'flex', flexDirection: 'column' }}>
 
 
-      <div ref={mapElRef} style={{ flex: 1, width: '100%', position: 'relative', minHeight: 0 }}>
+      <div
+        ref={mapElRef}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          zIndex: 1,
+        }}
+      >
 
 
         {loading && (
@@ -1053,10 +1062,14 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
 
       <div
         style={{
-          flexShrink: 0,
-          background: isDark ? '#050810' : '#f1f5f9',
-          padding: '12px 14px 14px',
-          borderTop: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(15,23,42,0.06)'
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 40,
+          padding: '0 14px max(14px, env(safe-area-inset-bottom))',
+          pointerEvents: 'none',
+          background: 'transparent',
         }}
       >
         <div
@@ -1065,6 +1078,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
             margin: '0 auto',
             borderRadius: 26,
             overflow: 'hidden',
+            pointerEvents: 'auto',
             background: isDark
               ? 'linear-gradient(180deg, rgba(12,17,29,0.82), rgba(7,12,22,0.94))'
               : 'rgba(255,255,255,0.86)',
