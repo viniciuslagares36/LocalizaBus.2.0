@@ -1046,7 +1046,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
   const routeBlue = isDrivingMode ? '#1a73e8' : '#06b6d4';
 
   // ✅ FIX: cores do painel inferior com contraste correto dark vs light
-  const panelBg = isDark ? 'rgba(5,8,16,0.96)' : 'rgba(255,255,255,0.96)';
+  const panelBg = isDark ? 'rgba(255, 0, 0, 0.96)' : 'rgba(255,255,255,0.96)';
   const panelBorder = isDark ? '1px solid rgba(0, 17, 255, 0.93)' : '1px solid rgba(13, 166, 255, 0.44)';
   const panelText = isDark ? '#ffffff' : '#111827';
   const panelSubText = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(17,24,39,0.55)';
@@ -1096,7 +1096,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
               }} />
               <div style={{
                 position: 'absolute', inset: 8, borderRadius: '50%',
-                background: isDark ? 'rgba(0,243,255,0.06)' : 'rgb(0, 80, 200)',
+                background: isDark ? 'rgba(0,243,255,0.06)' : 'rgba(0, 80, 200, 0.08)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center'
               }}>
                 {navigationMode === 'car' ? (
@@ -1158,13 +1158,13 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
                   borderRadius: 26,
                   overflow: 'hidden',
                   background: isDark
-                    ? 'linear-gradient(180deg, rgba(255, 0, 0, 0.76), rgba(145, 255, 0, 0.66))'
+                    ? 'linear-gradient(180deg, rgba(13,18,30,0.76), rgba(8,12,22,0.66))'
                     : 'linear-gradient(180deg, rgba(255,255,255,0.84), rgba(248,250,252,0.74))',
                   border: isDark
                     ? '1px solid rgba(255,255,255,0.10)'
-                    : '1px solid rgba(255, 0, 0, 0.08)',
+                    : '1px solid rgba(15,23,42,0.08)',
                   boxShadow: isDark
-                    ? '0 18px 50px rgb(255, 11, 11), inset 0 1px 0 rgba(255,255,255,0.07)'
+                    ? '0 18px 50px rgba(0,0,0,0.44), inset 0 1px 0 rgba(255,255,255,0.07)'
                     : '0 18px 42px rgba(15,23,42,0.13), inset 0 1px 0 rgba(255,255,255,0.78)',
                   backdropFilter: 'blur(26px) saturate(180%)',
                   WebkitBackdropFilter: 'blur(26px) saturate(180%)',
@@ -1178,7 +1178,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
                       height: 52,
                       borderRadius: 17,
                       background: 'linear-gradient(180deg, #3B82F6 0%, #2563EB 100%)',
-                      boxShadow: '0 12px 26px rgb(235, 44, 37)',
+                      boxShadow: '0 12px 26px rgba(37,99,235,0.34)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
