@@ -24,6 +24,7 @@ import {
   getLiveVehiclesByLine,
 } from './services/dftransGps';
 import { TOMTOM_API_KEY } from './config/apiKeys';
+import { Analytics } from '@vercel/analytics/react';
 
 // ─── API CONFIG ────────────────────────────────
 // TomTom permanece para mapa, busca, geocoding e caminhada.
@@ -2871,5 +2872,10 @@ function App() {
 }
 
 export default function WrappedApp() {
-  return <ErrorBoundary><App /></ErrorBoundary>;
+  return (
+    <ErrorBoundary>
+      <App />
+      <Analytics />
+    </ErrorBoundary>
+  );
 }
