@@ -1,6 +1,6 @@
 /*
   LocalizaBus — src/comp/WalkingMapModal.jsx
-  Modal de navegação 3D usando Mapbox. Aqui ficam câmera estilo Waze/Google Maps, voz nativa, velocímetro, rotas alternativas, linha pontilhada para caminhada e botão Minha localização.
+  Modal de navegação 3D usando Mapbox. Aqui ficam, voz nativa, velocímetro, rotas alternativas, linha pontilhada para caminhada e botão Minha localização.
   Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
 */
 
@@ -537,11 +537,19 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
     el.innerHTML = `
       <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
         <div style="width:34px;height:34px;border-radius:18px 18px 18px 4px;
-          background:${isDark ? '#0f172a' : '#ffffff'};
+          background:${isDark ? '#0497f8' : '#ffffff'};
           border:2px solid ${isDrivingMode ? '#2563eb' : '#06b6d4'};
-          box-shadow:0 6px 18px rgba(0,0,0,0.28);
+          box-shadow:0 6px 18px rgba(25, 0, 255, 0.42);
           transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;">
-          <span style="transform:rotate(45deg);font-size:14px;">🏁</span>
+        
+          <span style={{width: 18, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center",color: "#2563EB",
+  }}
+> <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+  >
+  <path d="M12 21s7-4.7 7-11a7 7 0 1 0-14 0c0 6.3 7 11 7 11z" />
+    <circle cx="12" cy="10" r="2.5" />
+  </svg>
+</span>
         </div>
       </div>`;
     new mapboxgl.Marker({ element: el, anchor: 'bottom' }).setLngLat([d.lon, d.lat]).addTo(m);
@@ -638,111 +646,111 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
       .addTo(m);
   }, []);
 
-// Instrução ─────────────────────────────────────────────────────────────────
-// Comentário humano: acompanha a distância percorrida e escolhe qual instrução deve aparecer/falar naquele momento.
-const updateInstr = useCallback((distM) => {
-  const data = rdRef.current;
+  // Instrução ─────────────────────────────────────────────────────────────────
+  // Comentário humano: acompanha a distância percorrida e escolhe qual instrução deve aparecer/falar naquele momento.
+  const updateInstr = useCallback((distM) => {
+    const data = rdRef.current;
 
-  if (!data?.instrs?.length) return;
+    if (!data?.instrs?.length) return;
 
-  let idx = 0;
+    let idx = 0;
 
-  for (let i = 0; i < data.instrs.length; i++) {
-    if (data.instrs[i].off <= distM) {
-      idx = i;
-    } else {
-      break;
-    }
-  }
-
-  setCurI(data.instrs[idx]);
-  setNextI(data.instrs[idx + 1] || null);
-}, []);
-  // GPS ───────────────────────────────────────────────────────────────────────
-// Comentário humano: recebe o GPS ao vivo, mexe a seta, atualiza velocidade e mantém a câmera seguindo o usuário.
-const onGPS = useCallback(pos => {
-  const { latitude: la, longitude: lo, accuracy: ac, speed } = pos.coords;
-
-  setAcc(Math.round(ac));
-
-  let b = brng;
-  let computedSpeedKmh = 0;
-
-  if (lastRef.current) {
-    b = bear(lastRef.current.lat, lastRef.current.lon, la, lo);
-
-    // Se o navegador não entregar velocidade, calcula pela distância/tempo entre leituras do GPS.
-    const deltaMeters = hav(lastRef.current.lat, lastRef.current.lon, la, lo);
-    const deltaSeconds = Math.max(0.3, (Date.now() - (lastRef.current.ts || Date.now())) / 1000);
-    computedSpeedKmh = (deltaMeters / deltaSeconds) * 3.6;
-  }
-
-  if (typeof speed === 'number' && speed >= 0) {
-    computedSpeedKmh = speed * 3.6;
-  }
-
-  // Evita número maluco quando o GPS dá salto.
-  if (!Number.isFinite(computedSpeedKmh) || computedSpeedKmh < 1) computedSpeedKmh = 0;
-  if (computedSpeedKmh > 180) computedSpeedKmh = 180;
-
-  setSpeedKmh(Math.round(computedSpeedKmh));
-
-  lastRef.current = { lat: la, lon: lo, ts: Date.now() };
-  setBrng(b);
-
-  const m = mapRef.current;
-
-  if (m) {
-    if (markerRef.current) {
-      markerRef.current.setLngLat([lo, la]);
-
-      const markerEl = markerRef.current.getElement();
-      const arrowBody = markerEl.querySelector(".nav-arrow-body");
-
-      if (arrowBody) {
-        arrowBody.style.transform = `rotate(${b}deg)`;
+    for (let i = 0; i < data.instrs.length; i++) {
+      if (data.instrs[i].off <= distM) {
+        idx = i;
+      } else {
+        break;
       }
-    } else {
-      addUserPin(m, { lat: la, lon: lo });
     }
 
-    // Modo navegação tipo Waze: zoom mais próximo, câmera inclinada e seta mais baixa na tela.
-    if (!overview) {
-      m.easeTo({
-        center: [lo, la],
-        zoom: 19.05,
-        pitch: 64,
-        bearing: b,
-        padding: { top: 120, bottom: 320, left: 0, right: 0 },
-        offset: [0, 90],
-        duration: 650,
-        easing: t => t
-      });
+    setCurI(data.instrs[idx]);
+    setNextI(data.instrs[idx + 1] || null);
+  }, []);
+  // GPS ───────────────────────────────────────────────────────────────────────
+  // Comentário humano: recebe o GPS ao vivo, mexe a seta, atualiza velocidade e mantém a câmera seguindo o usuário.
+  const onGPS = useCallback(pos => {
+    const { latitude: la, longitude: lo, accuracy: ac, speed } = pos.coords;
+
+    setAcc(Math.round(ac));
+
+    let b = brng;
+    let computedSpeedKmh = 0;
+
+    if (lastRef.current) {
+      b = bear(lastRef.current.lat, lastRef.current.lon, la, lo);
+
+      // Se o navegador não entregar velocidade, calcula pela distância/tempo entre leituras do GPS.
+      const deltaMeters = hav(lastRef.current.lat, lastRef.current.lon, la, lo);
+      const deltaSeconds = Math.max(0.3, (Date.now() - (lastRef.current.ts || Date.now())) / 1000);
+      computedSpeedKmh = (deltaMeters / deltaSeconds) * 3.6;
     }
 
+    if (typeof speed === 'number' && speed >= 0) {
+      computedSpeedKmh = speed * 3.6;
+    }
+
+    // Evita número maluco quando o GPS dá salto.
+    if (!Number.isFinite(computedSpeedKmh) || computedSpeedKmh < 1) computedSpeedKmh = 0;
+    if (computedSpeedKmh > 180) computedSpeedKmh = 180;
+
+    setSpeedKmh(Math.round(computedSpeedKmh));
+
+    lastRef.current = { lat: la, lon: lo, ts: Date.now() };
+    setBrng(b);
+
+    const m = mapRef.current;
+
+    if (m) {
+      if (markerRef.current) {
+        markerRef.current.setLngLat([lo, la]);
+
+        const markerEl = markerRef.current.getElement();
+        const arrowBody = markerEl.querySelector(".nav-arrow-body");
+
+        if (arrowBody) {
+          arrowBody.style.transform = `rotate(${b}deg)`;
+        }
+      } else {
+        addUserPin(m, { lat: la, lon: lo });
+      }
+
+      // Modo navegação tipo Waze: zoom mais próximo, câmera inclinada e seta mais baixa na tela.
+      if (!overview) {
+        m.easeTo({
+          center: [lo, la],
+          zoom: 19.05,
+          pitch: 64,
+          bearing: b,
+          padding: { top: 120, bottom: 320, left: 0, right: 0 },
+          offset: [0, 90],
+          duration: 650,
+          easing: t => t
+        });
+      }
+
+      const rd2 = rdRef.current;
+      if (rd2 && m.getSource('wr')) {
+        drawRoute(m, rd2);
+      }
+    }
+
+    const o = origRef.current;
+    const de = destRef.current;
     const rd2 = rdRef.current;
-    if (rd2 && m.getSource('wr')) {
-      drawRoute(m, rd2);
+
+    if (rd2 && o) {
+      const cov = Math.min(hav(o.lat, o.lon, la, lo), rd2.totalM);
+      const rem = Math.max(0, rd2.totalM - cov);
+
+      setCovered(cov);
+      setRemain(rem);
+      updateInstr(cov);
+
+      if (de && hav(la, lo, de.lat, de.lon) < 25) {
+        setArrived(true);
+      }
     }
-  }
-
-  const o = origRef.current;
-  const de = destRef.current;
-  const rd2 = rdRef.current;
-
-  if (rd2 && o) {
-    const cov = Math.min(hav(o.lat, o.lon, la, lo), rd2.totalM);
-    const rem = Math.max(0, rd2.totalM - cov);
-
-    setCovered(cov);
-    setRemain(rem);
-    updateInstr(cov);
-
-    if (de && hav(la, lo, de.lat, de.lon) < 25) {
-      setArrived(true);
-    }
-  }
-}, [overview, updateInstr, addUserPin, drawRoute, brng]);
+  }, [overview, updateInstr, addUserPin, drawRoute, brng]);
 
 
   const unlockVoice = useCallback(() => {
@@ -961,7 +969,7 @@ const onGPS = useCallback(pos => {
   return (
     <div ref={wrapRef} style={{ position: 'fixed', inset: 0, zIndex: 2147483647, background: wrapperBg, display: 'flex', flexDirection: 'column' }}>
 
-      
+
       <div
         ref={mapElRef}
         style={{
@@ -973,7 +981,7 @@ const onGPS = useCallback(pos => {
         }}
       >
 
-        
+
         {loading && (
           <div style={{
             position: 'absolute', inset: 0, zIndex: 10, display: 'flex', flexDirection: 'column',
@@ -1011,7 +1019,7 @@ const onGPS = useCallback(pos => {
           </div>
         )}
 
-        
+
         {err && !loading && (
           <div style={{
             position: 'absolute', inset: 0, zIndex: 10, display: 'flex', flexDirection: 'column',
@@ -1151,7 +1159,7 @@ const onGPS = useCallback(pos => {
           )}
         </AnimatePresence>
 
-        
+
         <motion.button whileTap={{ scale: 0.88 }} onClick={nav ? stopNav : onClose}
           style={{
             position: 'absolute', top: 'max(env(safe-area-inset-top,0px),14px)', left: 14,
@@ -1189,7 +1197,7 @@ const onGPS = useCallback(pos => {
           {fs ? <Minimize2 style={{ width: 16, height: 16 }} /> : <Maximize2 style={{ width: 16, height: 16 }} />}
         </motion.button>
 
-        
+
         {overview && (
           <motion.button
             whileTap={{ scale: 0.9 }}
@@ -1286,7 +1294,7 @@ const onGPS = useCallback(pos => {
           </div>
         )}
 
-        
+
         <AnimatePresence>
           {arrived && (
             <motion.div key="arrived"
