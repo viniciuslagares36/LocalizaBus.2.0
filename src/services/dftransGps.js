@@ -69,23 +69,45 @@ async function fetchJson(url, options = {}) {
 }
 
 function normalizeLine(line) {
-  return String(line || '')
+  const value = String(line || '')
     .trim()
     .replace(',', '.')
     .toUpperCase();
+
+  // Permite o usuário digitar 0400 e consultar a linha 0.400.
+  if (/^0\d{3,4}$/.test(value)) {
+    return `0.${value.slice(1)}`;
+  }
+
+  return value;
+}
+
+function getLineCandidates(line) {
+  const normalized = normalizeLine(line);
+  const compact = normalized.replace(/[^0-9A-Z]/g, '');
+
+  return new Set([
+    normalized,
+    normalized.replace(/^0\./, ''),
+    normalized.replace(/^0+(?=\d)/, ''),
+    compact,
+    compact.replace(/^0+(?=\d)/, ''),
+  ].filter(Boolean));
 }
 
 function normalizeLineComparable(line) {
-  return normalizeLine(line)
-    .replace(/^0+(?=\d)/, '')
-    .trim();
+  return Array.from(getLineCandidates(line))[0] || '';
 }
 
 function sameBusLine(a, b) {
-  const x = normalizeLineComparable(a);
-  const y = normalizeLineComparable(b);
+  const ax = getLineCandidates(a);
+  const by = getLineCandidates(b);
 
-  return !!x && !!y && (x === y || x.endsWith(y) || y.endsWith(x));
+  for (const x of ax) {
+    if (by.has(x)) return true;
+  }
+
+  return false;
 }
 
 function normalizeVehicle(vehicle, fallbackOperadora = null) {

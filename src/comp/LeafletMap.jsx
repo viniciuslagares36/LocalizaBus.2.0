@@ -317,6 +317,28 @@ function MapController({ center, markers, routeLines, userPosition, boardingStop
     if (lastSignatureRef.current === signature) return;
     lastSignatureRef.current = signature;
 
+    // Tela inicial: mostra vários ônibus ao vivo no DF sem abrir perdido no oceano/África.
+    if (focusMode === 'all-buses') {
+      const busPoints = markers
+        .filter((marker) => isValidCoord(marker.lat, marker.lon))
+        .slice(0, 220)
+        .map((marker) => [Number(marker.lat), Number(marker.lon)]);
+
+      if (busPoints.length >= 2) {
+        map.fitBounds(busPoints, {
+          padding: [28, 28],
+          maxZoom: 12.8,
+          animate: false,
+        });
+        return;
+      }
+
+      if (busPoints.length === 1) {
+        map.setView(busPoints[0], 15, { animate: false });
+        return;
+      }
+    }
+
     // Pesquisa por linha/ônibus ao vivo: abre direto no primeiro ônibus.
     // Sem animação pesada para não travar celular de entrada.
     if (firstBus && focusMode !== 'bounds') {
@@ -551,6 +573,7 @@ export default function LeafletMap({
   pickingLocation = false,
   onTogglePickingLocation = null,
   focusMode = 'auto',
+  maxMarkers = 24,
 }) {
   const [now, setNow] = useState(Date.now());
 
@@ -604,8 +627,8 @@ export default function LeafletMap({
       markers
         .map(normalizeDfPoint)
         .filter(Boolean)
-        .slice(0, 8),
-    [markers]
+        .slice(0, maxMarkers),
+    [markers, maxMarkers]
   );
 
   return (

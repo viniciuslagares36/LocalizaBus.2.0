@@ -213,6 +213,7 @@ const getRoute = async (o, d, signal, mode = 'walk') => {
 
   return {
     pts, instrs,
+    mode: travelMode === 'pedestrian' ? 'walk' : travelMode,
     totalM: route.summary.lengthInMeters,
     totalS: route.summary.travelTimeInSeconds,
     geo: { type: 'Feature', geometry: { type: 'LineString', coordinates: pts } },
@@ -474,20 +475,37 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
       if (m.getSource('wr')) { m.getSource('wr').setData(data.geo); return; }
       m.addSource('wr', { type: 'geojson', data: data.geo });
       // Linha limpa: sombra discreta + rota azul, sem neon pesado.
+      const isWalkRoute = data.mode === 'walk' || !isDrivingMode;
+
       m.addLayer({
         id: 'wr-shadow', type: 'line', source: 'wr',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': 'rgba(255,255,255,0.74)', 'line-width': 18, 'line-opacity': 0.96, 'line-blur': 2.2 }
+        paint: {
+          'line-color': isWalkRoute ? 'rgba(255,255,255,0.82)' : 'rgba(255,255,255,0.74)',
+          'line-width': isWalkRoute ? 14 : 18,
+          'line-opacity': 0.96,
+          'line-blur': isWalkRoute ? 1.6 : 2.2
+        }
       });
       m.addLayer({
         id: 'wr-fill', type: 'line', source: 'wr',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': isDrivingMode ? '#18D7FF' : '#0A84FF', 'line-width': 10.5, 'line-opacity': 1 }
+        paint: {
+          'line-color': isWalkRoute ? '#2563EB' : '#18D7FF',
+          'line-width': isWalkRoute ? 7 : 10.5,
+          'line-opacity': 1,
+          ...(isWalkRoute ? { 'line-dasharray': [1.4, 1.1] } : {})
+        }
       });
       m.addLayer({
         id: 'wr-soft-highlight', type: 'line', source: 'wr',
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#FFFFFF', 'line-width': 3, 'line-opacity': 0.82 }
+        paint: {
+          'line-color': '#FFFFFF',
+          'line-width': isWalkRoute ? 2.4 : 3,
+          'line-opacity': isWalkRoute ? 0.72 : 0.82,
+          ...(isWalkRoute ? { 'line-dasharray': [1.4, 1.1] } : {})
+        }
       });
     });
   }, [isDrivingMode, isDark]);
