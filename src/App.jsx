@@ -25,6 +25,7 @@ import {
 } from './services/dftransGps';
 import { TOMTOM_API_KEY } from './config/apiKeys';
 import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
 // ─── API CONFIG ────────────────────────────────
 // TomTom permanece para mapa, busca, geocoding e caminhada.
@@ -2919,6 +2920,7 @@ const canSearch = selectedMode === 'bus'
   </p>
 </footer>
       <Analytics />
+      <SpeedInsights />
     </div>
   );
 }
