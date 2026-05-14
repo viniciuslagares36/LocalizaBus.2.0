@@ -555,7 +555,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
           source: sourceId,
           layout: { 'line-join': 'round', 'line-cap': 'round' },
           paint: {
-            'line-color': color,
+            'line-color': color ,
             'line-width': lineWidth,
             'line-opacity': opacity,
             ...(isWalkRoute ? { 'line-dasharray': [1.4, 1.1] } : {})
@@ -635,7 +635,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
         <div style="width:34px;height:34px;border-radius:18px 18px 18px 4px;
           background:${isDark ? '#0497f8' : '#ffffff'};
           border:2px solid ${isDrivingMode ? '#2563eb' : '#06b6d4'};
-          box-shadow:0 6px 18px rgba(25, 0, 255, 0.42);
+          box-shadow:0 6px 18px rgb(255, 0, 170);
           transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;">
         
           <span style={{width: 18, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center",color: "#2563EB",
@@ -1311,7 +1311,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
               background: isDark ? 'rgba(12,17,27,0.72)' : 'rgba(255,255,255,0.80)',
               backdropFilter: 'blur(22px) saturate(170%)',
               WebkitBackdropFilter: 'blur(22px) saturate(170%)',
-              border: isDark ? '1px solid rgba(255, 0, 212, 0.49)' : '1px solid rgba(255, 0, 149, 0.58)',
+              border: isDark ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(255, 0, 149, 0.08)',
               color: isDark ? '#E0FBFF' : '#2563EB',
               fontSize: 12,
               fontWeight: 900,
