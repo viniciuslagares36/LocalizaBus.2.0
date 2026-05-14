@@ -1046,7 +1046,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
   const routeBlue = isDrivingMode ? '#1a73e8' : '#06b6d4';
 
   // ✅ FIX: cores do painel inferior com contraste correto dark vs light
-  const panelBg = isDark ? 'rgba(255, 0, 0, 0.96)' : 'rgba(255,255,255,0.96)';
+  const panelBg = isDark ? 'rgba(23, 60, 161, 0.96)' : 'rgba(255,255,255,0.96)';
   const panelBorder = isDark ? '1px solid rgba(0, 17, 255, 0.93)' : '1px solid rgba(13, 166, 255, 0.44)';
   const panelText = isDark ? '#ffffff' : '#111827';
   const panelSubText = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(17,24,39,0.55)';
@@ -1055,9 +1055,9 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
   const panelLabelColor = isDark ? 'rgba(0,213,255,0.65)' : 'rgba(37,99,235,0.75)';
 
   const neon = {
-    border: isDark ? '1px solid rgba(0,213,255,0.28)' : '1px solid rgba(37,99,235,0.18)',
-    background: isDark ? 'linear-gradient(135deg,rgba(0,213,255,0.10),rgba(37,99,235,0.22))' : 'linear-gradient(135deg,#eff6ff,#dbeafe)',
-    boxShadow: isDark ? '0 10px 26px rgba(0,0,0,0.28)' : '0 10px 22px rgba(37,99,235,0.12)',
+    border: isDark ? '1px solid rgb(0, 213, 255)' : '1px solid rgb(37, 100, 235)',
+    background: isDark ? 'linear-gradient(135deg,rgb(0, 213, 255),rgb(37, 100, 235))' : 'linear-gradient(135deg,#eff6ff,#dbeafe)',
+    boxShadow: isDark ? '0 10px 26px rgba(0,0,0,0.28)' : '0 10px 22px rgb(37, 100, 235)',
     color: isDark ? '#dffcff' : '#1d4ed8', fontWeight: 800, borderRadius: 18,
   };
 
