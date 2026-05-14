@@ -24,6 +24,7 @@ import {
   getLiveVehiclesByLine,
 } from './services/dftransGps';
 import { TOMTOM_API_KEY } from './config/apiKeys';
+import { Analytics } from '@vercel/analytics/react';
 
 // ─── API CONFIG ────────────────────────────────
 // TomTom permanece para mapa, busca, geocoding e caminhada.
@@ -2917,6 +2918,7 @@ const canSearch = selectedMode === 'bus'
     Transporte público do Distrito Federal em tempo real
   </p>
 </footer>
+      <Analytics />
     </div>
   );
 }
