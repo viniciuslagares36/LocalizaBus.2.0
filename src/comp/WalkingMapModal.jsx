@@ -1158,13 +1158,13 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
                   borderRadius: 26,
                   overflow: 'hidden',
                   background: isDark
-                    ? 'linear-gradient(180deg, rgba(13,18,30,0.76), rgba(8,12,22,0.66))'
+                    ? 'linear-gradient(180deg, rgba(255, 0, 0, 0.76), rgba(145, 255, 0, 0.66))'
                     : 'linear-gradient(180deg, rgba(255,255,255,0.84), rgba(248,250,252,0.74))',
                   border: isDark
                     ? '1px solid rgba(255,255,255,0.10)'
-                    : '1px solid rgba(15,23,42,0.08)',
+                    : '1px solid rgba(255, 0, 0, 0.08)',
                   boxShadow: isDark
-                    ? '0 18px 50px rgba(0,0,0,0.44), inset 0 1px 0 rgba(255,255,255,0.07)'
+                    ? '0 18px 50px rgb(255, 11, 11), inset 0 1px 0 rgba(255,255,255,0.07)'
                     : '0 18px 42px rgba(15,23,42,0.13), inset 0 1px 0 rgba(255,255,255,0.78)',
                   backdropFilter: 'blur(26px) saturate(180%)',
                   WebkitBackdropFilter: 'blur(26px) saturate(180%)',
@@ -1178,7 +1178,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
                       height: 52,
                       borderRadius: 17,
                       background: 'linear-gradient(180deg, #3B82F6 0%, #2563EB 100%)',
-                      boxShadow: '0 12px 26px rgba(37,99,235,0.34)',
+                      boxShadow: '0 12px 26px rgb(235, 44, 37)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
