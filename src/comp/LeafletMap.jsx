@@ -102,10 +102,14 @@ const escapeHtml = (value) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 
-// Comentário humano: aqui nasce o marcador do ônibus. Longe no mapa fica discreto; linha pesquisada fica maior e com número visível.
-const createBusWithLineBadgeIcon = (line, isSelected = false, directionType = '') => {
+// Comentário humano: aqui nasce o marcador do ônibus.
+// Deixei em dois estilos para não poluir o mapa:
+// 1) Todos os ônibus no mapa ficam como bolinha/ícone pequeno verde-azul e sem texto.
+// 2) Quando o usuário pesquisa uma linha ou seleciona um ônibus, o marcador cresce e mostra o número da linha.
+// Se quiser mudar cor/tamanho depois, mexe nas variáveis smallSize, selectedSize, background e border abaixo.
+const createBusMarkerIcon = ({ line, isSelected = false, showLabel = false, directionType = '' }) => {
   const colors = getLineBadgeColors(line);
-  const safeLine = escapeHtml(line || 'BUS');
+  const safeLine = escapeHtml(line || '');
   const ringColor =
     directionType === 'ida'
       ? '#38bdf8'
@@ -113,10 +117,46 @@ const createBusWithLineBadgeIcon = (line, isSelected = false, directionType = ''
         ? '#84cc16'
         : '#ffffff';
 
-  const badgeWidth = isSelected ? 58 : 50;
-  const badgeHeight = isSelected ? 24 : 21;
-  const busSize = isSelected ? 34 : 28;
-  const iconWidth = Math.max(badgeWidth + 8, busSize + 18);
+  // Ícone discreto para quando estamos mostrando todos os ônibus do DF.
+  // Esse é o visual que substitui aquele texto cinza "BUS".
+  if (!isSelected && !showLabel) {
+    const smallSize = 20;
+
+    return L.divIcon({
+      className: '',
+      html: `
+        <div style="
+          width: ${smallSize}px;
+          height: ${smallSize}px;
+          border-radius: 999px;
+          background: linear-gradient(135deg, #22c55e 0%, #0ea5e9 100%);
+          border: 2px solid rgba(255,255,255,.92);
+          box-shadow: 0 5px 14px rgba(2,6,23,.32);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        ">
+          <img src="${BUS_ICON_URL}" alt="ônibus" style="
+            width: 12px;
+            height: 12px;
+            display: block;
+            object-fit: contain;
+            filter: brightness(0) invert(1);
+          " />
+        </div>
+      `,
+      iconSize: [smallSize, smallSize],
+      iconAnchor: [smallSize / 2, smallSize / 2],
+      popupAnchor: [0, -smallSize / 2],
+    });
+  }
+
+  // Marcador destacado: aparece quando o usuário pesquisou/selecionou uma linha.
+  // Aqui mantemos o número visível para o usuário saber exatamente qual ônibus está vendo.
+  const badgeWidth = isSelected ? 64 : 54;
+  const badgeHeight = isSelected ? 26 : 22;
+  const busSize = isSelected ? 36 : 30;
+  const iconWidth = Math.max(badgeWidth + 10, busSize + 20);
   const iconHeight = badgeHeight + busSize + 10;
 
   return L.divIcon({
@@ -132,59 +172,62 @@ const createBusWithLineBadgeIcon = (line, isSelected = false, directionType = ''
         justify-content: flex-start;
         pointer-events: auto;
       ">
-        <div style="
-          position: relative;
-          z-index: 2;
-          min-width: ${badgeWidth}px;
-          height: ${badgeHeight}px;
-          padding: 0 7px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 4px;
-          background: ${colors.background};
-          color: ${colors.color};
-          border: 2px solid ${ringColor};
-          box-shadow: 0 5px 12px rgba(0,0,0,.35);
-          font-family: Arial, Helvetica, sans-serif;
-          font-size: ${isSelected ? '13px' : '11px'};
-          font-weight: 900;
-          line-height: 1;
-          letter-spacing: -0.03em;
-          white-space: nowrap;
-        ">${safeLine}</div>
+        ${safeLine ? `
+          <div style="
+            position: relative;
+            z-index: 2;
+            min-width: ${badgeWidth}px;
+            height: ${badgeHeight}px;
+            padding: 0 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 7px;
+            background: ${colors.background};
+            color: ${colors.color};
+            border: 2px solid ${ringColor};
+            box-shadow: 0 7px 16px rgba(0,0,0,.38);
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: ${isSelected ? '13px' : '11px'};
+            font-weight: 900;
+            line-height: 1;
+            letter-spacing: -0.03em;
+            white-space: nowrap;
+          ">${safeLine}</div>
 
-        <div style="
-          position: relative;
-          z-index: 1;
-          width: 0;
-          height: 0;
-          border-left: 5px solid transparent;
-          border-right: 5px solid transparent;
-          border-top: 6px solid ${colors.background};
-          margin-top: -1px;
-          filter: drop-shadow(0 2px 2px rgba(0,0,0,.25));
-        "></div>
+          <div style="
+            position: relative;
+            z-index: 1;
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 6px solid ${colors.background};
+            margin-top: -1px;
+            filter: drop-shadow(0 2px 2px rgba(0,0,0,.25));
+          "></div>
+        ` : ''}
 
         <div style="
           position: relative;
           z-index: 0;
-          margin-top: -1px;
+          margin-top: ${safeLine ? '-1px' : '0'};
           width: ${busSize}px;
           height: ${busSize}px;
           border-radius: 999px;
           display: flex;
           align-items: center;
           justify-content: center;
-          background: rgba(15, 23, 42, .82);
-          border: 2px solid rgba(255,255,255,.9);
-          box-shadow: 0 8px 18px rgba(0,0,0,.38);
+          background: linear-gradient(135deg, #22c55e 0%, #0ea5e9 100%);
+          border: 2px solid rgba(255,255,255,.94);
+          box-shadow: 0 9px 20px rgba(0,0,0,.40);
         ">
           <img src="${BUS_ICON_URL}" alt="ônibus" style="
-            width: ${Math.round(busSize * 0.72)}px;
-            height: ${Math.round(busSize * 0.72)}px;
+            width: ${Math.round(busSize * 0.64)}px;
+            height: ${Math.round(busSize * 0.64)}px;
             display: block;
             object-fit: contain;
+            filter: brightness(0) invert(1);
           " />
         </div>
       </div>
@@ -496,6 +539,102 @@ function PickLocationOnMap({ enabled, onPickLocation }) {
   return null;
 }
 
+
+// Comentário humano: camada dos ônibus ao vivo.
+// O Leaflet não sabe sozinho quando deve esconder/mostrar texto, então aqui escutamos o zoom.
+// Zoom longe: bolinhas pequenas sem texto. Zoom perto ou ônibus selecionado: aparece o número da linha.
+function BusMarkersLayer({ markers = [], selectedRouteId = null, now, onRouteSelect = null }) {
+  const map = useMap();
+  const [zoom, setZoom] = useState(() => map.getZoom());
+
+  useEffect(() => {
+    const updateZoom = () => setZoom(map.getZoom());
+
+    updateZoom();
+    map.on('zoomend', updateZoom);
+
+    return () => map.off('zoomend', updateZoom);
+  }, [map]);
+
+  const showTextByZoom = zoom >= 14.6;
+
+  return markers.map((marker, index) => {
+    const gpsUpdatedText = formatGpsUpdatedAt(marker.gpsTimestamp, now);
+    const isSelected = marker.routeId === selectedRouteId;
+    const markerKey = marker.id || `bus_${index}`;
+    const hasLine = Boolean(String(marker.line || '').trim());
+    const showLabel = isSelected || (showTextByZoom && hasLine);
+
+    return (
+      <React.Fragment key={`bus_group_${markerKey}`}>
+        {isSelected ? (
+          <CircleMarker
+            center={[Number(marker.lat), Number(marker.lon)]}
+            radius={18}
+            pathOptions={{
+              color: '#00e5ff',
+              fillColor: '#00e5ff',
+              fillOpacity: 0.16,
+              weight: 3,
+              opacity: 0.95,
+            }}
+          />
+        ) : null}
+
+        <Marker
+          position={[Number(marker.lat), Number(marker.lon)]}
+          icon={createBusMarkerIcon({
+            line: marker.line,
+            isSelected,
+            showLabel,
+            directionType: marker.directionType,
+          })}
+          eventHandlers={{
+            click: () => onRouteSelect?.(marker.routeId),
+          }}
+        >
+          <Popup>
+            <div style={{ minWidth: 230 }}>
+              <strong>{hasLine ? `Linha ${marker.line}` : 'Ônibus ao vivo'}</strong>
+
+              <br />
+
+              {marker.itinerary ? (
+                <span>{marker.itinerary}</span>
+              ) : (
+                <span>
+                  {marker.fromStop || 'Origem'} → {marker.toStop || 'Destino'}
+                </span>
+              )}
+
+              <div style={{ marginTop: 10 }}>
+                {marker.vehicleNumber ? (
+                  <>
+                    <strong>Veículo:</strong> {marker.vehicleNumber}
+                    <br />
+                  </>
+                ) : null}
+
+                {marker.etaMinutes != null ? (
+                  <>
+                    <strong>Previsão:</strong>{' '}
+                    {Number(marker.etaMinutes) <= 1 ? 'AGORA' : `${marker.etaMinutes} min`}
+                    <br />
+                  </>
+                ) : null}
+
+                {gpsUpdatedText ? (
+                  <span style={{ fontSize: 12, opacity: 0.78 }}>{gpsUpdatedText}</span>
+                ) : null}
+              </div>
+            </div>
+          </Popup>
+        </Marker>
+      </React.Fragment>
+    );
+  });
+}
+
 function VisibleDfStopsLayer({ stops = [], hiddenStopKeys = new Set() }) {
   const map = useMap();
   const [viewport, setViewport] = useState(() => ({
@@ -585,6 +724,7 @@ export default function LeafletMap({
   onTogglePickingLocation = null,
   focusMode = 'auto',
   maxMarkers = 24,
+  onRouteSelect = null,
 }) {
   const [now, setNow] = useState(Date.now());
 
@@ -767,16 +907,29 @@ export default function LeafletMap({
     />
 )}
 
-        {routeLines.map((route) => (
-          <Polyline
-            key={`route_${route.id}`}
-            positions={route.points}
-            pathOptions={{
-              weight: 5,
-              opacity: 0.85,
-            }}
-          />
-        ))}
+{routeLines.map((route, index) => {
+  const isSelected = route.id === selectedRouteId;
+
+  // Comentário humano: rota principal fica azul forte; as outras ficam quase transparentes.
+  // Se quiser deixar mais Google Maps ainda, mexe aqui: selectedColor, alternativeColor, weight e opacity.
+  const selectedColor = '#1a73e8';
+  const alternativeColor = '#93c5fd';
+
+  return (
+    <Polyline
+      key={`route_${route.id || index}`}
+      positions={route.points}
+      pathOptions={{
+        color: isSelected || (!selectedRouteId && index === 0) ? selectedColor : alternativeColor,
+        weight: isSelected || (!selectedRouteId && index === 0) ? 6 : 4,
+        opacity: isSelected || (!selectedRouteId && index === 0) ? 0.95 : 0.28,
+      }}
+      eventHandlers={{
+        click: () => onRouteSelect?.(route.id),
+      }}
+    />
+  );
+})}
 {selectedRouteId &&
   routes
     .filter((route) => route.id === selectedRouteId)
@@ -880,95 +1033,14 @@ export default function LeafletMap({
     </Marker>
   );
 })}
-{visibleMarkers.map((marker, index) => {
-  const gpsUpdatedText = formatGpsUpdatedAt(marker.gpsTimestamp, now);
-  const isSelected = marker.routeId === selectedRouteId;
-  const markerKey = marker.id || `bus_${index}`;
 
-  return (
-    <React.Fragment key={`bus_group_${markerKey}`}>
-      {isSelected ? (
-        <CircleMarker
-          center={[Number(marker.lat), Number(marker.lon)]}
-          radius={18}
-          pathOptions={{
-            color: '#00e5ff',
-            fillColor: '#00e5ff',
-            fillOpacity: 0.16,
-            weight: 3,
-            opacity: 0.95,
-          }}
-        />
-      ) : null}
-
-      <Marker
-        position={[Number(marker.lat), Number(marker.lon)]}
-        icon={createBusWithLineBadgeIcon(marker.line, isSelected, marker.directionType)}
-      >
-        <Popup>
-          <div style={{ minWidth: 230 }}>
-            <strong>Linha {marker.line || 'ônibus'}</strong>
-
-            <br />
-
-            {marker.itinerary ? (
-              <span>{marker.itinerary}</span>
-            ) : (
-              <span>
-                {marker.fromStop || 'Origem'} → {marker.toStop || 'Destino'}
-              </span>
-            )}
-
-            <div style={{ marginTop: 10 }}>
-              {marker.vehicleNumber ? (
-                <>
-                  <strong>Veículo:</strong> {marker.vehicleNumber}
-                  <br />
-                </>
-              ) : null}
-
-              {marker.etaMinutes != null ? (
-                <>
-                  <strong>Passa na parada em:</strong>{' '}
-                  {Number(marker.etaMinutes) <= 1 ? 'AGORA' : `${marker.etaMinutes} min`}
-                  <br />
-                </>
-              ) : null}
-
-              {marker.sentido ? (
-                <>
-                  <strong>Sentido:</strong> {marker.sentido}
-                  <br />
-                </>
-              ) : null}
-
-              <strong>Velocidade:</strong> {Math.round(marker.speed || 0)} km/h
-
-              {gpsUpdatedText ? (
-                <>
-                  <br />
-                  <span style={{ opacity: 0.78 }}>
-                    {gpsUpdatedText}
-                  </span>
-                </>
-              ) : null}
-
-              {marker.isGpsOnly ? (
-                <>
-                  <br />
-                  <span style={{ opacity: 0.72 }}>
-                    Previsão estimada por GPS
-                  </span>
-                </>
-              ) : null}
-            </div>
-          </div>
-        </Popup>
-      </Marker>
-    </React.Fragment>
-  );
-})}
-      </MapContainer>
+<BusMarkersLayer
+  markers={visibleMarkers}
+  selectedRouteId={selectedRouteId}
+  now={now}
+  onRouteSelect={onRouteSelect}
+/>
+</MapContainer>
 
 {onTogglePickingLocation && (
   <button

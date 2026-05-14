@@ -194,7 +194,7 @@ const getRoute = async (o, d, signal, mode = 'walk') => {
   const routeType = travelMode === 'pedestrian' ? 'shortest' : 'fastest';
   const url =
     `https://api.tomtom.com/routing/1/calculateRoute/${o.lat},${o.lon}:${d.lat},${d.lon}/json` +
-    `?key=${TOMTOM_KEY}&travelMode=${travelMode}&routeType=${routeType}&traffic=true&instructionsType=tagged&language=pt-BR`;
+    `?key=${TOMTOM_KEY}&travelMode=${travelMode}&routeType=${routeType}&traffic=true&instructionsType=tagged&language=pt-BR&maxAlternatives=2`;
 
   const r = await fetch(url, { signal });
   if (!r.ok) {
@@ -202,32 +202,50 @@ const getRoute = async (o, d, signal, mode = 'walk') => {
     throw new Error(`Erro ao calcular rota (HTTP ${r.status}): ${body.slice(0, 120)}`);
   }
   const data = await r.json();
-  const route = data.routes?.[0];
-  if (!route) throw new Error('Nenhuma rota encontrada entre os pontos. Tente ajustar o destino.');
+  const routes = Array.isArray(data.routes) ? data.routes : [];
+  if (!routes.length) throw new Error('Nenhuma rota encontrada entre os pontos. Tente ajustar o destino.');
 
-  const pts = route.legs[0].points.map(p => [p.longitude, p.latitude]);
+  // Comentário humano: o TomTom pode devolver mais de uma opção.
+  // Aqui eu transformo cada rota no mesmo formato usado pelo mapa, para conseguir desenhar principal + alternativas.
+  const parseTomTomRoute = (route, index = 0) => {
+    const pts = route.legs?.[0]?.points?.map(p => [p.longitude, p.latitude]) || [];
 
-  // ✅ FIX: Strip de tags HTML nas instruções
-  const instrs = (route.guidance?.instructions || []).map(i => ({
-    msg: stripHtmlTags(i.message || i.street || 'Continue em frente'),
-    man: i.maneuver || 'STRAIGHT',
-    off: i.routeOffsetInMeters || 0,
-    dist: i.travelTimeInSeconds || 0,
-  }));
+    const instrs = (route.guidance?.instructions || []).map(i => ({
+      msg: stripHtmlTags(i.message || i.street || 'Continue em frente'),
+      man: i.maneuver || 'STRAIGHT',
+      off: i.routeOffsetInMeters || 0,
+      dist: i.travelTimeInSeconds || 0,
+    }));
 
-  // ✅ Calcula bearing inicial da rota (primeiros 2 pontos)
-  let initialBearing = 0;
-  if (pts.length >= 2) {
-    initialBearing = bear(pts[0][1], pts[0][0], pts[1][1], pts[1][0]);
-  }
+    let initialBearing = 0;
+    if (pts.length >= 2) {
+      initialBearing = bear(pts[0][1], pts[0][0], pts[1][1], pts[1][0]);
+    }
+
+    return {
+      id: `tomtom_route_${index}`,
+      optionIndex: index,
+      pts,
+      instrs,
+      mode: travelMode === 'pedestrian' ? 'walk' : travelMode,
+      totalM: route.summary.lengthInMeters,
+      totalS: route.summary.travelTimeInSeconds,
+      geo: { type: 'Feature', geometry: { type: 'LineString', coordinates: pts } },
+      initialBearing,
+    };
+  };
+
+  const alternatives = routes
+    .slice(0, 3)
+    .map(parseTomTomRoute)
+    .filter(item => item.pts.length > 1);
+
+  const principal = alternatives[0];
+  if (!principal) throw new Error('A rota veio sem pontos suficientes para desenhar no mapa.');
 
   return {
-    pts, instrs,
-    mode: travelMode === 'pedestrian' ? 'walk' : travelMode,
-    totalM: route.summary.lengthInMeters,
-    totalS: route.summary.travelTimeInSeconds,
-    geo: { type: 'Feature', geometry: { type: 'LineString', coordinates: pts } },
-    initialBearing,
+    ...principal,
+    alternatives,
   };
 };
 
@@ -296,6 +314,9 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
   const [overview, setOverview] = useState(false);
   const [bottomOpen, setBottomOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [activeRouteIndex, setActiveRouteIndex] = useState(0);
+  const routeOptionsRef = useRef(null);
+  const routeAlternativesRef = useRef([]);
 
   useEffect(() => { setIsMobile(isMobileDevice()); }, []);
   useEffect(() => {
@@ -446,6 +467,8 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
         const data = await getRoute(o, d, abort.signal, navigationMode);
         if (!mountedRef.current) return;
 
+        routeAlternativesRef.current = data.alternatives || [data];
+        setActiveRouteIndex(0);
         rdRef.current = data;
         setRd(data);
         setRemain(data.totalM);
@@ -477,48 +500,121 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
     return () => abort.abort();
   }, [mapReady]); // eslint-disable-line
 
-  // Rota neon synthwave ───────────────────────────────────────────────────────
-  const drawRoute = useCallback((m, data) => {
+  // Comentário humano: desenha a rota no Mapbox.
+  // Carro e moto usam azul Google Maps (#1a73e8), com sombra branca para ficar legível.
+  // Caminhada usa linha pontilhada. Alternativas ficam azul claro quase sumindo.
+  // Se quiser mexer depois: troque primaryBlue, alternativeBlue, lineWidth e lineOpacity.
+  const drawRoute = useCallback((m, data, activeIndex = activeRouteIndex) => {
     if (!m || !data) return;
-    const safe = fn => { try { fn(); } catch (_) { } };
-    safe(() => {
-      if (m.getSource('wr')) { m.getSource('wr').setData(data.geo); return; }
-      m.addSource('wr', { type: 'geojson', data: data.geo });
-      // Linha limpa: sombra discreta + rota azul, sem neon pesado.
-      const isWalkRoute = data.mode === 'walk' || !isDrivingMode;
 
-      m.addLayer({
-        id: 'wr-shadow', type: 'line', source: 'wr',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          'line-color': isWalkRoute ? 'rgba(255,255,255,0.82)' : 'rgba(255,255,255,0.74)',
-          'line-width': isWalkRoute ? 14 : 18,
-          'line-opacity': 0.96,
-          'line-blur': isWalkRoute ? 1.6 : 2.2
+    const safe = fn => { try { fn(); } catch (_) { } };
+    const options = (data.alternatives?.length ? data.alternatives : [data]).slice(0, 3);
+    const isWalkRoute = data.mode === 'walk' || !isDrivingMode;
+    const primaryBlue = '#1a73e8'; // Azul do Google Maps para carro/moto.
+    const alternativeBlue = '#93c5fd'; // Azul clarinho para rotas alternativas.
+
+    safe(() => {
+      // Remove camadas antigas antes de redesenhar. Isso evita linha duplicada quando troca a rota ativa.
+      for (let i = 0; i < 3; i += 1) {
+        ['shadow', 'fill', 'soft-highlight'].forEach(part => {
+          const layerId = `wr-option-${i}-${part}`;
+          if (m.getLayer(layerId)) m.removeLayer(layerId);
+        });
+
+        const sourceId = `wr-option-${i}`;
+        if (m.getSource(sourceId)) m.removeSource(sourceId);
+      }
+
+      // Desenha alternativas primeiro para elas ficarem embaixo da rota principal.
+      options.forEach((option, index) => {
+        const isActive = index === activeIndex;
+        const sourceId = `wr-option-${index}`;
+        const color = isActive ? primaryBlue : alternativeBlue;
+        const opacity = isActive ? 1 : 0.28;
+        const lineWidth = isActive ? (isWalkRoute ? 7 : 10.5) : (isWalkRoute ? 5 : 7);
+
+        m.addSource(sourceId, { type: 'geojson', data: option.geo });
+
+        m.addLayer({
+          id: `wr-option-${index}-shadow`,
+          type: 'line',
+          source: sourceId,
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: {
+            'line-color': isActive ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.30)',
+            'line-width': lineWidth + 7,
+            'line-opacity': isActive ? 0.92 : 0.22,
+            'line-blur': isActive ? 2.1 : 1.6,
+            ...(isWalkRoute ? { 'line-dasharray': [1.4, 1.1] } : {})
+          }
+        });
+
+        m.addLayer({
+          id: `wr-option-${index}-fill`,
+          type: 'line',
+          source: sourceId,
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: {
+            'line-color': color,
+            'line-width': lineWidth,
+            'line-opacity': opacity,
+            ...(isWalkRoute ? { 'line-dasharray': [1.4, 1.1] } : {})
+          }
+        });
+
+        if (isActive) {
+          m.addLayer({
+            id: `wr-option-${index}-soft-highlight`,
+            type: 'line',
+            source: sourceId,
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: {
+              'line-color': '#ffffff',
+              'line-width': isWalkRoute ? 2.3 : 2.8,
+              'line-opacity': isWalkRoute ? 0.66 : 0.72,
+              ...(isWalkRoute ? { 'line-dasharray': [1.4, 1.1] } : {})
+            }
+          });
         }
-      });
-      m.addLayer({
-        id: 'wr-fill', type: 'line', source: 'wr',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          'line-color': isWalkRoute ? '#2563EB' : '#18D7FF',
-          'line-width': isWalkRoute ? 7 : 10.5,
-          'line-opacity': 1,
-          ...(isWalkRoute ? { 'line-dasharray': [1.4, 1.1] } : {})
-        }
-      });
-      m.addLayer({
-        id: 'wr-soft-highlight', type: 'line', source: 'wr',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          'line-color': '#FFFFFF',
-          'line-width': isWalkRoute ? 2.4 : 3,
-          'line-opacity': isWalkRoute ? 0.72 : 0.82,
-          ...(isWalkRoute ? { 'line-dasharray': [1.4, 1.1] } : {})
-        }
+
+        // Comentário humano: clique na rota pelo mapa seleciona aquela opção e desce até a lista de opções no painel.
+        m.on('click', `wr-option-${index}-fill`, () => {
+          setActiveRouteIndex(index);
+          requestAnimationFrame(() => {
+            routeOptionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          });
+        });
       });
     });
-  }, [isDrivingMode, isDark]);
+  }, [activeRouteIndex, isDrivingMode]);
+
+  // Comentário humano: quando o usuário toca numa rota alternativa, esta parte troca a rota ativa.
+  // Também atualiza tempo/distância do painel e redesenha as linhas no mapa com a cor certa.
+  useEffect(() => {
+    const options = routeAlternativesRef.current || [];
+    const selected = options[activeRouteIndex];
+    const map = mapRef.current;
+
+    if (!selected) return;
+
+    const nextData = {
+      ...selected,
+      alternatives: options,
+    };
+
+    rdRef.current = nextData;
+    setRd(nextData);
+    setRemain(nextData.totalM);
+    setCovered(0);
+    setCurI(nextData.instrs?.[0] || null);
+    setNextI(nextData.instrs?.[1] || null);
+
+    if (map) {
+      drawRoute(map, nextData, activeRouteIndex);
+    }
+  }, [activeRouteIndex, drawRoute]);
+
+
 
   // ✅ FIX: fitAll (visão geral) usa pitch 0 e fitBounds
   const fitAll = useCallback((m, pts) => {
@@ -945,7 +1041,9 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
 
   // ─── Design tokens: adapta dark/light ────────────────────────────────────
   const C = '#00d5ff';
-  const routeBlue = isDrivingMode ? '#2563eb' : '#06b6d4';
+  // Comentário humano: cor principal da rota no painel.
+  // Carro e moto usam o azul estilo Google Maps. Caminhada fica ciano para diferenciar e combina com a linha pontilhada.
+  const routeBlue = isDrivingMode ? '#1a73e8' : '#06b6d4';
 
   // ✅ FIX: cores do painel inferior com contraste correto dark vs light
   const panelBg = isDark ? 'rgba(5,8,16,0.96)' : 'rgba(255,255,255,0.96)';
@@ -1509,6 +1607,63 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
                   transition={{ duration: 0.55 }}
                   style={{ height: '100%', borderRadius: 999, background: 'linear-gradient(90deg, #67E8F9, #2563EB)' }}
                 />
+              </div>
+            )}
+
+            {bottomOpen && rd?.alternatives?.length > 1 && (
+              <div
+                ref={routeOptionsRef}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                  gap: 8,
+                  marginBottom: 12,
+                }}
+              >
+                {rd.alternatives.map((option, index) => {
+                  const isActive = index === activeRouteIndex;
+
+                  return (
+                    <button
+                      key={option.id || index}
+                      type="button"
+                      onClick={() => setActiveRouteIndex(index)}
+                      style={{
+                        borderRadius: 14,
+                        padding: '10px 11px',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        border: isActive
+                          ? '1px solid rgba(26,115,232,0.72)'
+                          : isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(15,23,42,0.08)',
+                        background: isActive
+                          ? isDark ? 'rgba(26,115,232,0.18)' : 'rgba(26,115,232,0.10)'
+                          : isDark ? 'rgba(255,255,255,0.045)' : 'rgba(15,23,42,0.035)',
+                        color: isDark ? '#F8FAFC' : '#0F172A',
+                      }}
+                      title="Selecionar esta opção de rota"
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span
+                          style={{
+                            width: 26,
+                            height: 5,
+                            borderRadius: 999,
+                            background: isActive ? '#1a73e8' : 'rgba(147,197,253,0.55)',
+                            display: 'inline-block',
+                            flexShrink: 0,
+                          }}
+                        />
+                        <strong style={{ fontSize: 12 }}>
+                          {index === 0 ? 'Rota principal' : `Alternativa ${index}`}
+                        </strong>
+                      </div>
+                      <div style={{ marginTop: 5, fontSize: 11, fontWeight: 800, opacity: 0.72 }}>
+                        {mins(option.totalS)} • {dist(option.totalM)}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
 

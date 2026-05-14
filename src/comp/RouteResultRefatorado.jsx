@@ -249,12 +249,13 @@ const SkeletonCard = memo(() => (
 
 // ─── Card de rota individual ─────────────────────────────────────────────────
 // Comentário humano: card visual de cada opção de rota. Se quiser mudar texto, botão ou layout do resultado, começa por aqui.
-const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCount = 1 }) => {
+const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCount = 1, cardRef = null, isSelectedOnMap = false }) => {
   const cardClass = useMemo(() => {
+    if (isSelectedOnMap) return 'border-blue-400/70 bg-blue-50/50 dark:border-blue-500/50 dark:bg-blue-950/20 shadow-lg shadow-blue-500/10';
     if (route.isNavigationRoute) return 'border-cyan-300/50 bg-cyan-50/20 dark:border-cyan-800/40 dark:bg-cyan-900/10';
     if (route.isLive) return 'border-green-300/60 bg-green-50/30 dark:border-green-800/50 dark:bg-green-900/10';
     return 'border-gray-200 dark:border-gray-700/70 bg-white dark:bg-gray-800/80 hover:shadow-md';
-  }, [route.isNavigationRoute, route.isLive]);
+  }, [route.isNavigationRoute, route.isLive, isSelectedOnMap]);
 
   const handleDeepLink = useCallback(() => {
     openNativeNav(
@@ -289,6 +290,7 @@ const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCou
 
   return (
     <motion.div
+      ref={cardRef}
       key={route.id}
       initial={{ opacity: 0, x: -16 }}
       animate={{ opacity: 1, x: 0 }}
@@ -526,6 +528,9 @@ const RouteResultRefatorado = ({
   const [walkRoute, setWalkRoute] = useState(null);
   const [walkModalKey, setWalkModalKey] = useState(null);
   const [selectedRouteId, setSelectedRouteId] = useState(null);
+  // Comentário humano: guardo uma referência de cada card.
+  // Quando o usuário clica numa linha no mapa, usamos isso para descer/rolar até o card certo.
+  const routeCardRefs = useRef(new Map());
   const lastOpenRef = useRef(0);
 
 const processedRoutes = useMemo(() => {
@@ -771,6 +776,25 @@ const liveMarkers = useMemo(
   }, []);
 
 
+  // Comentário humano: centraliza a rota no mapa e também rola a página até o card correspondente.
+  // É isso que faz o clique em uma rota/linha no mapa "descer" para o resultado certo.
+  const handleFocusRouteFromMap = useCallback((routeId) => {
+    if (!routeId) return;
+
+    setSelectedRouteId(routeId);
+
+    requestAnimationFrame(() => {
+      const card = routeCardRefs.current.get(routeId);
+
+      if (card) {
+        card.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        });
+      }
+    });
+  }, []);
+
   useEffect(() => {
     const firstLiveRoute = processedRoutes.find(
       (route) => route?.isLive && route?.realTimeGPS?.lat && route?.realTimeGPS?.lon
@@ -879,6 +903,7 @@ const liveMarkers = useMemo(
       onPickLocation={onPickLocation}
       pickingLocation={pickingLocation}
       onTogglePickingLocation={onTogglePickingLocation}
+      onRouteSelect={handleFocusRouteFromMap}
       height={liveMarkers.length ? 'clamp(320px, 58vh, 560px)' : 'clamp(300px, 48vh, 460px)'}
       focusMode={liveMarkers.length ? 'first-bus' : 'auto'}
     />
@@ -894,8 +919,13 @@ const liveMarkers = useMemo(
   route={route}
   idx={idx}
   onWalkOpen={handleWalkOpen}
-  onFocusMap={setSelectedRouteId}
+  onFocusMap={handleFocusRouteFromMap}
   sameLineVehicleCount={lineVehicleCount.get(String(route.line || '').trim()) || 1}
+  isSelectedOnMap={selectedRouteId === route.id}
+  cardRef={(node) => {
+    if (node) routeCardRefs.current.set(route.id, node);
+    else routeCardRefs.current.delete(route.id);
+  }}
 />
             ))}
           </AnimatePresence>
