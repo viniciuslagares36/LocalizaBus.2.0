@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — src/comp/WalkingMapModal.jsx
+  Modal de navegação 3D usando Mapbox. Aqui ficam câmera estilo Waze/Google Maps, voz nativa, velocímetro, rotas alternativas, linha pontilhada para caminhada e botão Minha localização.
+  Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
+*/
+
 // src/comp/WalkingMapModal.jsx
 // ✅ FIX: Mapa visual agora usa Mapbox GL JS navigation-day/night
 // ✅ CLEAN: Mapa Mapbox mais limpo, com câmera de navegação e UI menos pesada
@@ -40,6 +46,7 @@ const clockTime = (d = new Date()) => d.toLocaleTimeString('pt-BR', { hour: '2-d
 const isIOSDevice = () => /iPad|iPhone|iPod/i.test(navigator.userAgent);
 const isAndroidDevice = () => /Android/i.test(navigator.userAgent);
 
+// Comentário humano: escolhe a melhor voz pt-BR disponível no aparelho. No Android costuma pegar Google TTS; no iPhone depende das vozes instaladas.
 const pickBestPtBrVoice = () => {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
 
@@ -63,6 +70,7 @@ const pickBestPtBrVoice = () => {
   return [...ptVoices].sort((a, b) => score(b) - score(a))[0] || voices[0] || null;
 };
 
+// Comentário humano: limpa a frase antes de falar. Aqui melhoramos leitura de DF-061, EPAA, km, m, Av. e nomes de via.
 const normalizeSpeechText = (txt = '') => String(txt)
   .replace(/<[^>]+>/g, ' ')
   .replace(/&amp;/g, '&')
@@ -113,6 +121,7 @@ const getIsDarkMode = (isDarkProp) => {
 };
 
 // ─── Estilo Mapbox conforme dark/light ───────────────────────────────────────
+// Comentário humano: alterna o estilo do Mapbox. Tema claro usa mapa claro; tema escuro usa mapa escuro.
 const getMapboxStyle = (isDark) => {
   return (
     import.meta.env.VITE_MAPBOX_STYLE_URL ||
@@ -173,6 +182,7 @@ const geocode = async (addr, signal) => {
   return { lat: p.lat, lon: p.lon };
 };
 
+// Comentário humano: busca a rota no TomTom. Carro/moto/caminhada podem trazer alternativas quando a API devolver mais de uma opção.
 const getRoute = async (o, d, signal, mode = 'walk') => {
   if (!TOMTOM_KEY) throw new Error('Chave TomTom ausente para calcular rota. Configure VITE_TOMTOM_API_KEY na Vercel.');
   if (!isValidCoord(o.lat, o.lon))
@@ -629,6 +639,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
   }, []);
 
 // Instrução ─────────────────────────────────────────────────────────────────
+// Comentário humano: acompanha a distância percorrida e escolhe qual instrução deve aparecer/falar naquele momento.
 const updateInstr = useCallback((distM) => {
   const data = rdRef.current;
 
@@ -648,6 +659,7 @@ const updateInstr = useCallback((distM) => {
   setNextI(data.instrs[idx + 1] || null);
 }, []);
   // GPS ───────────────────────────────────────────────────────────────────────
+// Comentário humano: recebe o GPS ao vivo, mexe a seta, atualiza velocidade e mantém a câmera seguindo o usuário.
 const onGPS = useCallback(pos => {
   const { latitude: la, longitude: lo, accuracy: ac, speed } = pos.coords;
 

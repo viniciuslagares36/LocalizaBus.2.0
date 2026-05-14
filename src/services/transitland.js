@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — src/services/transitland.js
+  Normaliza modos vindos de serviços externos para o formato que o LocalizaBus entende.
+  Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
+*/
+
 // src/services/transitland.js
 // Integração Transitland v2 para MVP do LocalizaBus.
 // TomTom continua sendo usado no projeto para mapa e busca/geocoding.

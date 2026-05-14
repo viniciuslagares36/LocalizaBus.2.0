@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — src/index.css
+  Estilos globais do site. Aqui ficam ajustes de responsividade, scroll, tema claro/escuro e pequenos polimentos visuais.
+  Comentário humano: mexa aqui quando quiser alterar comportamento geral em celular, tablet, notebook e desktop.
+*/
+
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;

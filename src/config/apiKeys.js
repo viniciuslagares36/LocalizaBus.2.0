@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — src/config/apiKeys.js
+  Central das chaves do front-end. Sempre pega valores de variáveis da Vercel/Vite para não deixar chave fixa espalhada nos componentes.
+  Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
+*/
+
 // src/config/apiKeys.js
 // Centraliza chaves públicas do front-end. Em produção, configure essas variáveis na Vercel.
 // Observação: chaves usadas direto no navegador continuam públicas; restrinja por domínio no painel do provedor.

@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — src/services/semobStops.js
+  Serviço de paradas/rotas SEMOB. Baixa paradas, guarda cache local e valida quais linhas passam perto do usuário.
+  Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
+*/
+
 import axios from 'axios';
 import { DF_FAVORITE_PLACES } from '../data/dfPlaces';
 
@@ -86,6 +92,7 @@ const fetchStops = async (url) => {
   return data.map(mapStop).filter(validStop);
 };
 
+// Comentário humano: carrega paradas SEMOB e guarda cache no navegador para abrir mais rápido depois.
 export const getAllSemobStops = async ({ forceRefresh = false } = {}) => {
   if (!forceRefresh) {
     const cached = readCache();
@@ -143,6 +150,7 @@ const scorePlace = (place, query) => {
   return score;
 };
 
+// Comentário humano: busca lugares/paradas pelo texto digitado, ajudando o usuário a achar localização sem depender só de GPS.
 export const findLocalDfPlaces = async (query, { limit = 12 } = {}) => {
   const safeQuery = normalizeText(query);
 
@@ -212,6 +220,7 @@ export const getSemobStopRoutes = async (stopId) => {
   }
 };
 
+// Comentário humano: descobre quais linhas passam perto das paradas encontradas.
 export const getAllowedLinesForStops = async (stops = [], limit = 5) => {
   const targetStops = stops
     .filter((stop) => stop?.stopId)

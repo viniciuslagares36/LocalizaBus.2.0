@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — src/comp/LeafletMap.jsx
+  Mapa pequeno de ônibus/paradas usando Leaflet. Aqui controlamos os marcadores dos ônibus ao vivo, zoom no primeiro ônibus pesquisado, proteção de coordenadas do DF e aparência dos ícones no mapa.
+  Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
+*/
+
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   MapContainer,
@@ -96,6 +102,7 @@ const escapeHtml = (value) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 
+// Comentário humano: aqui nasce o marcador do ônibus. Longe no mapa fica discreto; linha pesquisada fica maior e com número visível.
 const createBusWithLineBadgeIcon = (line, isSelected = false, directionType = '') => {
   const colors = getLineBadgeColors(line);
   const safeLine = escapeHtml(line || 'BUS');
@@ -199,6 +206,7 @@ const isCoordInsideDf = (lat, lon) => {
   return la >= -16.35 && la <= -15.35 && lo >= -48.35 && lo <= -47.20;
 };
 
+// Comentário humano: proteção contra latitude/longitude invertida ou fora do DF. Sem isso o mapa pode parar no oceano/África.
 const normalizeDfPoint = (point) => {
   if (!point) return null;
 
@@ -300,6 +308,7 @@ const getStopsFromRoutes = (routes = []) => {
   return Array.from(map.values());
 };
 
+// Comentário humano: controla o zoom do mapa automaticamente. É aqui que focamos no primeiro ônibus quando uma linha é pesquisada.
 function MapController({ center, markers, routeLines, userPosition, boardingStop, focusMode = 'auto' }) {
   const map = useMap();
   const lastSignatureRef = useRef('');
@@ -417,6 +426,7 @@ const formatGpsUpdatedAt = (timestamp, now = Date.now()) => {
 
   return `Atualizado há ${minutes} min`;
 };
+// Comentário humano: quando o usuário seleciona uma rota/ônibus, esta parte tenta centralizar o mapa no alvo certo.
 function FollowSelectedTarget({ markers, routes, selectedRouteId }) {
   const map = useMap();
   const lastTargetRef = useRef(null);
@@ -559,6 +569,7 @@ function VisibleDfStopsLayer({ stops = [], hiddenStopKeys = new Set() }) {
   });
 }
 
+// Comentário humano: componente final do mapa Leaflet usado no card de ônibus e escolha no mapa.
 export default function LeafletMap({
   center,
   markers = [],

@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — src/App.jsx
+  Arquivo principal da tela do LocalizaBus. Aqui ficam o formulário de busca, o carrossel, troca de tema, escolha de ônibus/metrô/caminhada/carro/moto e a regra que decide qual tipo de rota será pesquisada.
+  Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
+*/
+
 import React, { useState, useEffect, useRef, useCallback, useMemo, Component } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -32,6 +38,7 @@ import { SpeedInsights } from '@vercel/speed-insights/react';
 // DFTrans/DF no Ponto agora é a fonte principal de ônibus ao vivo.
 
 
+// Comentário humano: esta parte padroniza número de linha. É aqui que evitamos erro com linha começando com zero, tipo 0.400 ou 0400.
 // Normaliza códigos para comparar linhas de transporte (ex: "Linha 143.2", "143.2", "0.143 e etc")
 const normalizeLineCode = (value) => String(value || '')
   .toLowerCase()
@@ -172,6 +179,7 @@ class ErrorBoundary extends Component {
 // ─── SPRING ─────────────────────────────────────
 const spring = { type: 'spring', stiffness: 120, damping: 22 };
 
+// Comentário humano: imagens do topo/carrossel. Se quiser trocar a foto sem mexer em lógica, mantenha os nomes em public/carousel.
 const carouselImages = [
   { src: '/carousel/brasilia-congresso.webp', title: 'Brasília em movimento' },
   { src: '/carousel/brasilia-ponte-jk.webp', title: 'Ponte JK' },
@@ -207,6 +215,7 @@ const preloadImage = (src) => {
 };
 
 // ─── ROUTE SEARCH HOOK ───────────────────────────
+// Comentário humano: coração da busca. Esse hook concentra carregamento, estado, erros, ônibus ao vivo e rotas calculadas.
 const useRouteSearch = () => {
   const [routes, setRoutes] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1333,6 +1342,7 @@ const getBestUserStopForVehicle = (vehicle, userStops) => {
     }
   };
 
+// Comentário humano: função principal da pesquisa. Ela decide se busca linha de ônibus, rota por localização, caminhada, carro ou moto.
 const searchRoute = async (originAddress, destinationAddress, mode) => {
   if (!originAddress || !destinationAddress || isSearchingRef.current) return;
 
@@ -2627,6 +2637,7 @@ function App() {
   setPickingLocation(true);
 };
 
+// Comentário humano: quando o usuário aperta o botão Buscar, cai aqui. Antes de chamar a API, o texto é limpo e validado.
 const handleSearch = async () => {
   const rawO = sanitizeInput(origin);
   const rawD = sanitizeInput(destination);

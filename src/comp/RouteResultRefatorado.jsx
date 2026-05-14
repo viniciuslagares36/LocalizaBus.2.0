@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — src/comp/RouteResultRefatorado.jsx
+  Lista/cards de resultados de rota. Aqui aparecem as linhas encontradas, badges de GPS ao vivo, botões de abrir navegação e interação com o mapa.
+  Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
+*/
+
 // src/comp/RouteResultRefatorado.jsx
 // Performance: useMemo/useCallback, lazy image, sem re-renders desnecessários
 // Deep Link: geo: / maps:// para app nativo de GPS
@@ -242,6 +248,7 @@ const SkeletonCard = memo(() => (
 ));
 
 // ─── Card de rota individual ─────────────────────────────────────────────────
+// Comentário humano: card visual de cada opção de rota. Se quiser mudar texto, botão ou layout do resultado, começa por aqui.
 const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCount = 1 }) => {
   const cardClass = useMemo(() => {
     if (route.isNavigationRoute) return 'border-cyan-300/50 bg-cyan-50/20 dark:border-cyan-800/40 dark:bg-cyan-900/10';
@@ -502,6 +509,7 @@ const RouteCard = memo(({ route, idx, onWalkOpen, onFocusMap, sameLineVehicleCou
 });
 
 // ─── Componente principal ────────────────────────────────────────────────────
+// Comentário humano: componente que organiza todos os resultados, filtra ida/volta e conversa com o mapa.
 const RouteResultRefatorado = ({
   routes,
   origin,
@@ -668,6 +676,7 @@ const processedRoutes = useMemo(() => {
   return result;
 }, [processedRoutes]);
 
+// Comentário humano: transforma ônibus ao vivo em marcadores para o mapa, sem recalcular à toa e travar no celular.
 const liveMarkers = useMemo(
   () =>
     visibleBusRoutes.map((route, index) => ({

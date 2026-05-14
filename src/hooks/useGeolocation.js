@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — src/hooks/useGeolocation.js
+  Hook de GPS do usuário. Faz leitura do navegador, suaviza movimento e evita renderização demais no celular.
+  Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
+*/
+
 // src/hooks/useGeolocation.js
 // Hook de geolocalização com interpolação suave, anti memory-leak e throttle
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -27,6 +33,7 @@ const haversineM = (a, b) => {
  * @param {number}  opts.timeout
  * @returns {{ location, accuracy, bearing, speed, error, supported }}
  */
+// Comentário humano: hook reutilizável para GPS. Mantém posição, erro, permissão e movimento suavizado.
 export const useGeolocation = ({
   enableHighAccuracy = true,
   smoothTransition = true,

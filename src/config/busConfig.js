@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — src/config/busConfig.js
+  Configurações e cálculos auxiliares de ônibus: distância, tempo de caminhada e identificação visual das bacias/linhas.
+  Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
+*/
+
 // src/config/busConfig.js
 import { TOMTOM_API_KEY } from './apiKeys';
 

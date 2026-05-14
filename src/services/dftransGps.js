@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — src/services/dftransGps.js
+  Serviço de ônibus ao vivo. Chama o backend Cloudflare/Vercel, normaliza veículos, aceita linhas com zero na frente e aplica cache para deixar a busca mais rápida.
+  Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
+*/
+
 // src/services/dftransGps.js
 
 const DFTRANS_WORKER_URL = import.meta.env.VITE_DFTRANS_WORKER_URL;
@@ -27,6 +33,7 @@ const CACHE_TIME_MS = 15000;
 const LINE_CACHE_TIME_MS = 12000;
 const REQUEST_TIMEOUT_MS = 7000;
 
+// Comentário humano: fetch com timeout, cache de requisição em andamento e proteção para não disparar várias buscas iguais.
 async function fetchJson(url, options = {}) {
   const { signal, timeoutMs = REQUEST_TIMEOUT_MS, cacheKey = url } = options;
 
@@ -68,6 +75,7 @@ async function fetchJson(url, options = {}) {
   return requestPromise;
 }
 
+// Comentário humano: normaliza linha para aceitar variações com zero na frente, ponto e texto extra.
 function normalizeLine(line) {
   const value = String(line || '')
     .trim()
@@ -110,6 +118,7 @@ function sameBusLine(a, b) {
   return false;
 }
 
+// Comentário humano: transforma respostas diferentes do DFTrans/Worker em um formato único que o app entende.
 function normalizeVehicle(vehicle, fallbackOperadora = null) {
   const lat =
     vehicle?.lat ??
@@ -270,6 +279,7 @@ export async function getAllLiveVehicles(options = {}) {
   return normalizeDftransResponse(data);
 }
 
+// Comentário humano: busca ônibus ao vivo de uma linha específica. É a função mais importante para pesquisa por linha.
 export async function getLiveVehiclesByLine(line, options = {}) {
   const normalizedLine = normalizeLine(line);
   const { signal, force = false } = options;

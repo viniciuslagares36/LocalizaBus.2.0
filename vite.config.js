@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — vite.config.js
+  Configuração do Vite, responsável por rodar/buildar o React.
+  Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
+*/
+
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 

@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — src/data/dfPlaces.js
+  Lista local de lugares conhecidos do DF para ajudar na busca/autocomplete mesmo quando uma API externa demora ou falha.
+  Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
+*/
+
 export const DF_FAVORITE_PLACES = [
   {
     name: 'Rodoviária do Plano Piloto',

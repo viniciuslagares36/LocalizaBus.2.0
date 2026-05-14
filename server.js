@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — server.js
+  Servidor Express local para testes/desenvolvimento. Não é o caminho principal do deploy na Vercel, mas ajuda a testar API localmente.
+  Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
+*/
+
 import express from "express";
 import cors from "cors";
 import axios from "axios";

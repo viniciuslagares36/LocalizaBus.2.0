@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — api/dftrans-gps.js
+  Proxy serverless da Vercel para buscar GPS do DFTrans quando não usamos o Worker direto. Também ajuda a contornar CORS.
+  Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
+*/
+
 // api/dftrans-gps.js
 import https from 'https';
 

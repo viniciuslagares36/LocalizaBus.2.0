@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — src/services/mobilibusOtp.js
+  Serviço para planejar rota no backend Mobilibus/OTP quando a busca precisa de itinerário de transporte.
+  Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
+*/
+
 export async function planMobilibusRoute({
   fromLat,
   fromLon,

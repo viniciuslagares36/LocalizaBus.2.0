@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — tailwind.config.js
+  Configuração do Tailwind CSS: arquivos analisados e tema base.
+  Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
+*/
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [

@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — src/comp/BadgeTempo.jsx
+  Componente pequeno para mostrar tempo/estado visual nos cards sem repetir código em vários lugares.
+  Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
+*/
+
 // src/comp/BadgeTempo.jsx
 // [TASK 2] Resiliência de estados: gps_active, SCHEDULED com tempo, coerção numérica
 import React from 'react';

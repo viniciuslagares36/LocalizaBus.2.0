@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — api/mobilibus-plan.js
+  Proxy serverless para planejar rota via Mobilibus sem expor detalhes no front-end.
+  Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
+*/
+
 const MOBILIBUS_PLAN_URL =
   'https://otp.mobilibus.com/FY7J-lwk85QGbn/otp/routers/default/plan';
 

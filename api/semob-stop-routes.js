@@ -1,3 +1,9 @@
+/*
+  LocalizaBus — api/semob-stop-routes.js
+  Proxy serverless para saber quais linhas atendem uma parada.
+  Comentários feitos em linguagem simples para você conseguir mexer depois sem se perder.
+*/
+
 const MOBILIBUS_STOPS_URL =
   'https://otp.mobilibus.com/FY7J-lwk85QGbn/otp/routers/default/index/stops';
 
