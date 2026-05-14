@@ -1042,12 +1042,12 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
   // ─── Design tokens: adapta dark/light ────────────────────────────────────
   const C = '#00d5ff';
   // Comentário humano: cor principal da rota no painel.
-  // Carro e moto usam o azul estilo Google Maps. Caminhada fica ciano para diferenciar e combina com a linha pontilhada.
+  // Carro e moto usam o azul. Caminhada fica ciano para diferenciar e combina com a linha pontilhada.
   const routeBlue = isDrivingMode ? '#1a73e8' : '#06b6d4';
 
   // ✅ FIX: cores do painel inferior com contraste correto dark vs light
   const panelBg = isDark ? 'rgba(5,8,16,0.96)' : 'rgba(255,255,255,0.96)';
-  const panelBorder = isDark ? '1px solid rgba(0,213,255,0.12)' : '1px solid rgba(0,0,0,0.08)';
+  const panelBorder = isDark ? '1px solid rgba(0, 17, 255, 0.93)' : '1px solid rgba(13, 166, 255, 0.44)';
   const panelText = isDark ? '#ffffff' : '#111827';
   const panelSubText = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(17,24,39,0.55)';
   const panelAccent = isDark ? 'rgba(0,243,255,0.04)' : 'rgba(0,0,0,0.04)';
@@ -1096,7 +1096,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
               }} />
               <div style={{
                 position: 'absolute', inset: 8, borderRadius: '50%',
-                background: isDark ? 'rgba(0,243,255,0.06)' : 'rgba(0,80,200,0.08)',
+                background: isDark ? 'rgba(0,243,255,0.06)' : 'rgb(0, 80, 200)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center'
               }}>
                 {navigationMode === 'car' ? (
