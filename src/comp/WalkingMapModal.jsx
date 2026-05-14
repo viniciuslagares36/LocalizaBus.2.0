@@ -1311,7 +1311,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
               background: isDark ? 'rgba(12,17,27,0.72)' : 'rgba(255,255,255,0.80)',
               backdropFilter: 'blur(22px) saturate(170%)',
               WebkitBackdropFilter: 'blur(22px) saturate(170%)',
-              border: isDark ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(255, 0, 149, 0.74)',
+              border: isDark ? '1px solid rgba(255, 0, 212, 0.49)' : '1px solid rgba(255, 0, 149, 0.58)',
               color: isDark ? '#E0FBFF' : '#2563EB',
               fontSize: 12,
               fontWeight: 900,
