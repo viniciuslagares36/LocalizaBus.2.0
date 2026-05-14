@@ -1112,7 +1112,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
               color: C, fontSize: 13, fontWeight: 700, letterSpacing: 1,
               textShadow: isDark ? `0 0 12px rgba(0,243,255,0.6)` : 'none'
             }}>{loadMsg}</p>
-            <p style={{ color: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.4)', fontSize: 11 }}>{modeLabel}</p>
+            <p style={{ color: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.4)', fontSize: 11 }}>{modeLabel} 3D</p>
             <style>{`@keyframes spinNeon{to{transform:rotate(360deg)}}`}</style>
           </div>
         )}
@@ -1158,7 +1158,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
                   borderRadius: 26,
                   overflow: 'hidden',
                   background: isDark
-                    ? 'linear-gradient(180deg, rgb(255, 0, 0), rgba(8,12,22,0.66))'
+                    ? 'linear-gradient(180deg, rgba(13,18,30,0.76), rgba(8,12,22,0.66))'
                     : 'linear-gradient(180deg, rgba(255,255,255,0.84), rgba(248,250,252,0.74))',
                   border: isDark
                     ? '1px solid rgba(255,255,255,0.10)'
@@ -1311,7 +1311,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
               background: isDark ? 'rgba(12,17,27,0.72)' : 'rgba(255,255,255,0.80)',
               backdropFilter: 'blur(22px) saturate(170%)',
               WebkitBackdropFilter: 'blur(22px) saturate(170%)',
-              border: isDark ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(15,23,42,0.08)',
+              border: isDark ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(255, 0, 149, 0.74)',
               color: isDark ? '#E0FBFF' : '#2563EB',
               fontSize: 12,
               fontWeight: 900,
