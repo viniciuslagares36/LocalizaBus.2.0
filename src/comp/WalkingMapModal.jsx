@@ -1046,11 +1046,11 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
   const routeBlue = isDrivingMode ? '#1a73e8' : '#06b6d4';
 
   // ✅ FIX: cores do painel inferior com contraste correto dark vs light
-  const panelBg = isDark ? 'rgba(23, 60, 161, 0.96)' : 'rgba(255,255,255,0.96)';
+  const panelBg = isDark ? 'rgba(12, 22, 51, 0.96)' : 'rgba(255,255,255,0.96)';
   const panelBorder = isDark ? '1px solid rgba(0, 17, 255, 0.93)' : '1px solid rgba(13, 166, 255, 0.44)';
   const panelText = isDark ? '#ffffff' : '#111827';
   const panelSubText = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(17,24,39,0.55)';
-  const panelAccent = isDark ? 'rgba(255, 0, 200, 0.97)' : 'rgba(255, 4, 242, 0.91)';
+  const panelAccent = isDark ? 'rgba(0,243,255,0.04)' : 'rgba(0,0,0,0.04)';
   const panelAccentBorder = isDark ? '1px solid rgba(0,243,255,0.09)' : '1px solid rgba(0,0,0,0.08)';
   const panelLabelColor = isDark ? 'rgba(0,213,255,0.65)' : 'rgba(37,99,235,0.75)';
 
@@ -1112,7 +1112,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
               color: C, fontSize: 13, fontWeight: 700, letterSpacing: 1,
               textShadow: isDark ? `0 0 12px rgba(0,243,255,0.6)` : 'none'
             }}>{loadMsg}</p>
-            <p style={{ color: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.4)', fontSize: 11 }}>Mapbox GL · Navegação {modeLabel} 3D</p>
+            <p style={{ color: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.4)', fontSize: 11 }}>{modeLabel}</p>
             <style>{`@keyframes spinNeon{to{transform:rotate(360deg)}}`}</style>
           </div>
         )}
@@ -1158,7 +1158,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
                   borderRadius: 26,
                   overflow: 'hidden',
                   background: isDark
-                    ? 'linear-gradient(180deg, rgba(13,18,30,0.76), rgba(8,12,22,0.66))'
+                    ? 'linear-gradient(180deg, rgb(255, 0, 0), rgba(8,12,22,0.66))'
                     : 'linear-gradient(180deg, rgba(255,255,255,0.84), rgba(248,250,252,0.74))',
                   border: isDark
                     ? '1px solid rgba(255,255,255,0.10)'
