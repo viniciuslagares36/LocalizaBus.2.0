@@ -555,7 +555,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
           source: sourceId,
           layout: { 'line-join': 'round', 'line-cap': 'round' },
           paint: {
-            'line-color': color ,
+            'line-color': color,
             'line-width': lineWidth,
             'line-opacity': opacity,
             ...(isWalkRoute ? { 'line-dasharray': [1.4, 1.1] } : {})
@@ -635,7 +635,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
         <div style="width:34px;height:34px;border-radius:18px 18px 18px 4px;
           background:${isDark ? '#0497f8' : '#ffffff'};
           border:2px solid ${isDrivingMode ? '#2563eb' : '#06b6d4'};
-          box-shadow:0 6px 18px rgb(255, 0, 170);
+          box-shadow:0 6px 18px rgba(25, 0, 255, 0.42);
           transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;">
         
           <span style={{width: 18, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center",color: "#2563EB",
@@ -1062,7 +1062,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
   };
 
   // Fundo do wrapper: dark=escuro, light=claro neutro
-  const wrapperBg = isDark ? '#050810' : '#f1f5f9';
+  const wrapperBg = isDark ? '#0de217' : '#f1f5f9';
 
   return (
     <div ref={wrapRef} style={{ position: 'fixed', inset: 0, zIndex: 2147483647, background: wrapperBg, display: 'flex', flexDirection: 'column' }}>
@@ -1096,7 +1096,7 @@ const WalkingMapModal = ({ route, userLocation, onClose, isDark: isDarkProp }) =
               }} />
               <div style={{
                 position: 'absolute', inset: 8, borderRadius: '50%',
-                background: isDark ? 'rgba(0,243,255,0.06)' : 'rgba(0, 80, 200, 0.08)',
+                background: isDark ? 'rgba(0,243,255,0.06)' : 'rgba(112, 228, 4, 0.75)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center'
               }}>
                 {navigationMode === 'car' ? (
